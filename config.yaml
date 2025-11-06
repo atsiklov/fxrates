@@ -1,0 +1,9 @@
+http_server:
+  port: "8080"
+
+db_server:
+  host: ""
+  port: ""
+  user: ""
+  pass: ""
+  name: ""

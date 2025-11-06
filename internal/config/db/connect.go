@@ -8,7 +8,7 @@ import (
 )
 
 func CreatePool(ctx context.Context, cfg config.DbServer) *pgxpool.Pool {
-	pool, err := pgxpool.New(ctx, cfg.GetFormattedParams())
+	pool, err := pgxpool.New(ctx, cfg.GetConnectionStr())
 	if err != nil {
 		panic(err)
 	} // todo: ...
