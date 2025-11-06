@@ -5,8 +5,13 @@ import (
 	"fxrates/internal/config"
 	"fxrates/internal/config/db"
 	"fxrates/internal/config/http"
+	"fxrates/internal/delivery"
+	"fxrates/internal/services"
+	"fxrates/internal/storage"
 	"log"
 	"os"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func main() {
@@ -21,5 +26,14 @@ func main() {
 	defer pool.Close()
 	log.Println("Successfully connected to DB")
 
-	http.StartServer(appCfg.HTTPServer)
+	rateRepo := storage.NewRatePgRepository(pool)
+	rateService := services.RateService{RateRepo: rateRepo}
+	rateHandler := delivery.RateHandler{RateService: &rateService}
+
+	router := chi.NewRouter()
+	// router.Use(// todo: add logging)
+	router.Post("/api/v1/rates/updates", rateHandler.UpdateRate)
+	router.Get("/api/v1/rates/updates/{id}", rateHandler.GetRateInfo)
+	router.Get("/api/v1/rates/{code}", rateHandler.GetRate)
+	http.StartServer(appCfg.HTTPServer, router)
 }
