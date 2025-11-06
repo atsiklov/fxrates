@@ -1,9 +1,16 @@
 package main
 
 import (
-	"fmt"
+	"fxrates/internal/config"
+	"fxrates/internal/config/http"
 )
 
 func main() {
-	fmt.Printf("Let's code it!")
+	appCfg := config.Init()
+
+	// pool := db.CreatePool(nil, appCfg.DbServer) // todo: add ctx
+	// if pool == nil {panic("")} // todo: ...
+	// defer pool.Close()
+
+	http.StartServer(appCfg.HTTPServer)
 }
