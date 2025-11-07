@@ -2,11 +2,16 @@ package domain
 
 import "time"
 
-type Rate struct {
-	ID        int64
-	Name      string
-	Code      string
-	Price     float64
-	CreatedAt time.Time
+type AppliedRate struct {
+	PairID    int64
+	Base      string
+	Quote     string
+	Value     float64
 	UpdatedAt time.Time
+}
+
+type PendingRate struct {
+	PairID int64
+	Base   string
+	Quote  string
 }
