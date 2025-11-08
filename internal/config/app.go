@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -36,13 +36,13 @@ func Init() *AppConfig {
 	var cfg AppConfig
 
 	if err := godotenv.Load(); err != nil {
-		log.Fatalf("❌ Failed to load .env")
+		logrus.Fatalf("Error loading .env file: %s", err) // todo: handle
 	}
 
 	viper.SetConfigFile("config.yaml")
 	viper.SetConfigType("yaml")
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("❌ Failed to parse in config: %v", err)
+		logrus.Fatalf("Error reading config file, %s", err) // todo: handle
 	}
 
 	// db server
@@ -53,7 +53,7 @@ func Init() *AppConfig {
 	_ = viper.BindEnv("db_server.name", "DB_NAME")
 
 	if err := viper.Unmarshal(&cfg); err != nil {
-		log.Fatalf("❌ Failed to unmarshal config: %v", err)
+		logrus.Fatalf("Error unmarshalling config: %s", err) // todo: handle
 	}
 
 	return &cfg

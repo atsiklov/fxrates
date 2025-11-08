@@ -41,19 +41,19 @@ func (r *RateUpdatesRepository) GetPending(ctx context.Context) ([]domain.Pendin
 	return rates, nil
 }
 
-type BatchRow struct {
+type batchRow struct {
 	PairID    int64     `json:"pair_id"`
 	Value     float64   `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (r *RateUpdatesRepository) SaveApplied(ctx context.Context, rates []domain.AppliedRate) error {
-	payload := make([]BatchRow, 0, len(rates))
-	for _, rate := range rates {
-		payload = append(payload, BatchRow{rate.PairID, rate.Value, rate.UpdatedAt})
-	}
-	if len(payload) == 0 {
+	if len(rates) == 0 {
 		return nil
+	}
+	payload := make([]batchRow, 0, len(rates))
+	for _, rate := range rates {
+		payload = append(payload, batchRow{rate.PairID, rate.Value, rate.UpdatedAt})
 	}
 
 	payloadJSON, err := json.Marshal(payload)

@@ -1,4 +1,4 @@
-package rates
+package adapters
 
 import (
 	"context"
@@ -7,13 +7,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type Repository interface {
+type RateClient interface {
+	GetExchangeRates(ctx context.Context, code string) (map[string]float64, error)
+}
+
+type RateRepository interface {
 	UpdateByCode(ctx context.Context, base string, quote string) (uuid.UUID, error)
 	GetByUpdateID(ctx context.Context, updateID uuid.UUID) (*domain.AppliedRate, error)
 	GetByCode(ctx context.Context, base string, quote string) (*domain.AppliedRate, error)
 }
 
-type UpdatesRepository interface {
+type RateUpdatesRepository interface {
 	GetPending(ctx context.Context) ([]domain.PendingRate, error)
 	SaveApplied(ctx context.Context, rates []domain.AppliedRate) error
 }

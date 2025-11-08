@@ -2,50 +2,57 @@ package main
 
 import (
 	"context"
+	"fxrates/internal/adapters/httpclient"
 	"fxrates/internal/adapters/postgres"
-	"fxrates/internal/adapters/ratesapi"
 	"fxrates/internal/config"
 	"fxrates/internal/config/db"
 	myHTTP "fxrates/internal/config/http"
-	"fxrates/internal/rates"
-	"log"
+	"fxrates/internal/rate"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	log.SetOutput(os.Stdout)
 	appCfg := config.Init()
+	logrus.Info("Config initialization successful")
 
 	ctx := context.Background()
-	pool := db.CreatePool(ctx, appCfg.DbServer)
-	if pool == nil {
-		panic("")
-	} // todo: ...
+	pool, err := db.CreatePool(ctx, appCfg.DbServer)
+	if err != nil {
+		logrus.Fatalf("Error connecting to postrgres") // todo: handle
+	}
 	defer pool.Close()
-	log.Println("Successfully connected to DB")
+	logrus.Info("Postgres connection successful")
 
-	// set up an http client to make external rates requests
+	// set up an http client to make external rate requests
 	baseHTTPClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	ratesClient := ratesapi.NewClient(baseHTTPClient, "https://example.com/latest")
+	// clients
+	rateClient := httpclient.NewExchangeRateClient(baseHTTPClient, "https://example.com/latest")
 
+	// repositories
 	rateUpdatesRepo := postgres.NewPostgresRateUpdatesRepository(pool)
 	rateRepo := postgres.NewPostgresRateRepository(pool)
-	scheduler := rates.Scheduler{RateUpdatesRepo: rateUpdatesRepo, Client: ratesClient}
-	scheduler.CreateAndRun()
 
-	rateService := rates.RateService{Repo: rateRepo}
-	rateHandler := rates.RateHandler{RateService: &rateService}
+	// services
+	rateService := rate.NewService(rateRepo)
+	scheduler := rate.NewScheduler(rateUpdatesRepo, rateClient)
+	scheduler.CreateAndRun()
+	logrus.Info("Scheduler activation successful")
+
+	// handlers
+	rateHandler := rate.NewHandler(rateService)
 
 	router := chi.NewRouter() // todo: add logging
 	router.Post("/api/v1/rates/updates", rateHandler.UpdateRate)
 	router.Get("/api/v1/rates/updates/{id}", rateHandler.GetByUpdateID)
 	router.Get("/api/v1/rates/{code}", rateHandler.GetRate)
+
+	logrus.Info("Starting http server")
 	myHTTP.StartServer(appCfg.HTTPServer, router)
 }

@@ -1,30 +1,33 @@
-package rates
+package rate
 
 import (
 	"context"
-	"log"
+	"fxrates/internal/adapters"
 	"time"
 
-	"fxrates/internal/adapters/ratesapi"
-
 	"github.com/go-co-op/gocron/v2"
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 type Scheduler struct {
-	RateUpdatesRepo UpdatesRepository
-	Client          *ratesapi.Client
+	rateUpdatesRepo adapters.RateUpdatesRepository
+	rateClient      adapters.RateClient
 }
 
 func (s *Scheduler) CreateAndRun() {
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
-		log.Println(err)
-		// todo: handle error
+		logrus.Fatalf("Error creating scheduler: %s", err) // todo: handle
 	}
 	// defer func() { _ = scheduler.Shutdown() }()
 
 	job := func(ctx context.Context) {
-		UpdateRates(ctx, s.RateUpdatesRepo, s.Client)
+		execID := uuid.NewString()
+		err := UpdateRates(ctx, execID, s.rateUpdatesRepo, s.rateClient)
+		if err != nil {
+			logrus.Error("Internal job error") // todo: handle error
+		}
 	}
 
 	_, err = scheduler.NewJob(
@@ -33,11 +36,9 @@ func (s *Scheduler) CreateAndRun() {
 	)
 
 	if err != nil {
-		log.Println(err)
-		// todo: handle error
+		logrus.Fatalf("Error creating job: %s", err) // todo: handle
 	}
 
-	log.Println("Starting scheduler")
 	scheduler.Start()
 
 	// todo: завершение по сигналу
@@ -49,4 +50,8 @@ func (s *Scheduler) CreateAndRun() {
 	// if err := s.Shutdown(); err != nil {
 	// 	log.Fatal(err)
 	// }
+}
+
+func NewScheduler(rateUpdatesRepo adapters.RateUpdatesRepository, rateClient adapters.RateClient) *Scheduler {
+	return &Scheduler{rateUpdatesRepo: rateUpdatesRepo, rateClient: rateClient}
 }

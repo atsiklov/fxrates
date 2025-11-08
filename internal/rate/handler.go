@@ -1,4 +1,4 @@
-package rates
+package rate
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 )
 
-type RateHandler struct {
-	RateService *RateService
+type Handler struct {
+	Service *Service
 }
 
 type UpdateRateRequest struct {
@@ -24,7 +24,7 @@ type UpdateRateResponse struct {
 }
 
 // UpdateRate todo: ctx, error handling, validation
-func (h *RateHandler) UpdateRate(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UpdateRate(w http.ResponseWriter, r *http.Request) {
 	var req UpdateRateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(422)
@@ -32,7 +32,7 @@ func (h *RateHandler) UpdateRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updateID, err := h.RateService.UpdateByCode(r.Context(), "base", "quote") // todo
+	updateID, err := h.Service.UpdateByCode(r.Context(), "base", "quote") // todo
 	if err != nil {
 		w.WriteHeader(422)
 		_, _ = w.Write([]byte(fmt.Sprintf("error while updating rate %s", err)))
@@ -53,7 +53,7 @@ type GetRateResponse struct {
 }
 
 // GetByUpdateID todo: ctx, error handling, validation
-func (h *RateHandler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
 	rawID := chi.URLParam(r, "id")
 	updateID, err := uuid.Parse(rawID)
 	if err != nil {
@@ -63,7 +63,7 @@ func (h *RateHandler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	rate, err := h.RateService.GetByUpdateID(ctx, updateID)
+	rate, err := h.Service.GetByUpdateID(ctx, updateID)
 	if err != nil {
 		w.WriteHeader(422)
 		_, _ = w.Write([]byte(fmt.Sprintf("error while updating rate %s", err)))
@@ -81,12 +81,12 @@ func (h *RateHandler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetRate todo: ctx, error handling, validation
-func (h *RateHandler) GetRate(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetRate(w http.ResponseWriter, r *http.Request) {
 	// code := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "code")))
 	// check if valid
 
 	ctx := r.Context()
-	rate, err := h.RateService.GetByCode(ctx, "base", "quote") // todo: implement
+	rate, err := h.Service.GetByCode(ctx, "base", "quote") // todo: implement
 	if err != nil {
 		w.WriteHeader(422)
 		_, _ = w.Write([]byte(fmt.Sprintf("error while updating rate %s", err)))
@@ -100,4 +100,8 @@ func (h *RateHandler) GetRate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(res)
+}
+
+func NewHandler(RateService *Service) *Handler {
+	return &Handler{Service: RateService}
 }
