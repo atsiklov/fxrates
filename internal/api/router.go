@@ -4,11 +4,13 @@ import (
 	"fxrates/internal/rate/handler"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func NewRouter(rateHandler *handler.Handler) *chi.Mux {
 	router := chi.NewRouter()
-	// todo: add logging middleware, recover, etc.
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.Heartbeat("/healthz"))
 
 	router.Post("/api/v1/rates/updates", rateHandler.ScheduleUpdate)
 	router.Get("/api/v1/rates/updates/{id}", rateHandler.GetByUpdateID)

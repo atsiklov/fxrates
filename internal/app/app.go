@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"fxrates/internal/platform/db"
 	httpserver "fxrates/internal/platform/http"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,9 +29,15 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	// Logger: default INFO level
-	logrus.SetLevel(logrus.InfoLevel)
-	logrus.Info("Config initialization successful")
+	// Logger
+	logrus.SetOutput(os.Stdout)
+	cfgLevel := appCfg.Logging.Level
+	if parsedLvl, parseErr := logrus.ParseLevel(cfgLevel); parseErr != nil {
+		logrus.SetLevel(logrus.InfoLevel)
+	} else {
+		logrus.SetLevel(parsedLvl)
+	}
+	logrus.Info("✅ Config initialization successful")
 
 	// Root context bound to OS signals for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -46,7 +54,7 @@ func Run() error {
 		return err
 	}
 	defer pool.Close()
-	logrus.Info("Postgres connection successful")
+	logrus.Info("✅ Postgres connection successful")
 
 	// Load supported currencies
 	supportedCurrencies, err := loadSupportedCurrencies(startupCtx, pool)
@@ -54,7 +62,7 @@ func Run() error {
 		logrus.WithError(err).Error("Failed to load supported currencies")
 		return err
 	}
-	logrus.Info("Supported currencies loaded")
+	logrus.Info("✅ Supported currencies loaded")
 
 	// Base HTTP client (configurable timeout)
 	httpTimeout := time.Duration(appCfg.HTTPClient.TimeoutSeconds) * time.Second
@@ -64,7 +72,14 @@ func Run() error {
 	baseHTTPClient := &http.Client{Timeout: httpTimeout}
 
 	// External clients
-	rateClient := httpclient.NewExchangeRateClient(baseHTTPClient, "https://example.com/latest")
+	exchangeAPIBaseURL := strings.TrimSuffix(appCfg.ExchangeRateAPI.BaseURL, "/")
+	if appCfg.ExchangeRateAPI.APIKey == "" {
+		return fmt.Errorf("exchange rate api key is required")
+	}
+	rateClient := httpclient.NewExchangeRateClient(
+		baseHTTPClient,
+		fmt.Sprintf("%s/%s/latest", exchangeAPIBaseURL, appCfg.ExchangeRateAPI.APIKey),
+	)
 
 	// Repositories
 	rateUpdatesRepo := postgres.NewRateUpdatesRepository(pool)
@@ -85,7 +100,7 @@ func Run() error {
 		logrus.WithError(startErr).Error("Failed to start scheduler")
 		return startErr
 	}
-	logrus.Info("Scheduler activation successful")
+	logrus.Info("✅ Scheduler activation successful")
 
 	// Handlers and router
 	rateHandler := handler.NewRateHandler(rateValidator, rateService)

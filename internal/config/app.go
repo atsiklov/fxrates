@@ -28,13 +28,24 @@ func (config *DbServer) GetConnectionStr() string {
 }
 
 type AppConfig struct {
-	HTTPServer HTTPServer `mapstructure:"http_server"`
-	DbServer   DbServer   `mapstructure:"db_server"`
-	HTTPClient HTTPClient `mapstructure:"http_client"`
+	HTTPServer      HTTPServer      `mapstructure:"http_server"`
+	DbServer        DbServer        `mapstructure:"db_server"`
+	HTTPClient      HTTPClient      `mapstructure:"http_client"`
+	ExchangeRateAPI ExchangeRateAPI `mapstructure:"exchange_rate_api"`
+	Logging         Logging         `mapstructure:"logging"`
 }
 
 type HTTPClient struct {
 	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+}
+
+type Logging struct {
+	Level string `mapstructure:"level"`
+}
+
+type ExchangeRateAPI struct {
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
 }
 
 func Init() (*AppConfig, error) {
@@ -50,9 +61,6 @@ func Init() (*AppConfig, error) {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	viper.SetDefault("db_server.max_conns", 10)
-	viper.SetDefault("http_client.timeout_seconds", 10)
-
 	// db server env vars
 	_ = viper.BindEnv("db_server.host", "DB_HOST")
 	_ = viper.BindEnv("db_server.port", "DB_PORT")
@@ -63,6 +71,11 @@ func Init() (*AppConfig, error) {
 
 	// http client env vars
 	_ = viper.BindEnv("http_client.timeout_seconds", "HTTP_CLIENT_TIMEOUT_SECONDS")
+	// logging env var
+	_ = viper.BindEnv("logging.level", "LOG_LEVEL")
+	// exchange rate api env vars
+	_ = viper.BindEnv("exchange_rate_api.base_url", "EXCHANGE_RATE_API_BASE_URL")
+	_ = viper.BindEnv("exchange_rate_api.api_key", "EXCHANGE_RATE_API_KEY")
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshalling config: %w", err)

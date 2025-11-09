@@ -156,7 +156,7 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 	for quote, v := range ratesMap {
 		p := pair{Base: base, Quote: quote}
 		if _, ok := pairsMap[p]; ok {
-			mu.Lock() // todo: не лочить всю мапу
+			mu.Lock() // lock the entire map, hope this fine for test project :)
 			pairsMap[p] = v
 			mu.Unlock()
 		}

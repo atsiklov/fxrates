@@ -11,3 +11,10 @@ db_server:
 
 http_client:
   timeout_seconds: 10
+
+logging:
+  level: "info"
+
+exchange_rate_api:
+  base_url: "https://v6.exchangerate-api.com/v6"
+  api_key: ""
