@@ -9,14 +9,25 @@ import (
 )
 
 type ScheduleUpdateRequest struct {
-	Base  string `json:"base"`
-	Quote string `json:"quote"`
+	Base  string `json:"base" example:"USD"`
+	Quote string `json:"quote" example:"EUR"`
 }
 
 type ScheduleUpdateResponse struct {
-	UpdateID string `json:"update_id"`
+	UpdateID string `json:"update_id" example:"77b5d9f5-0569-47e3-aee2-f659d59fbd97"`
 }
 
+// ScheduleUpdate godoc
+// @Summary Schedule rate update
+// @Description Schedule a rate update for a currency pair
+// @Tags Rates
+// @Accept json
+// @Produce json
+// @Param request body ScheduleUpdateRequest true "Update parameters"
+// @Success 202 {object} ScheduleUpdateResponse
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /rates/updates [post]
 func (h *Handler) ScheduleUpdate(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 256)
 	dec := json.NewDecoder(r.Body)

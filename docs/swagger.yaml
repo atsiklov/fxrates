@@ -1,0 +1,162 @@
+basePath: /api/v1
+definitions:
+  handler.GetByCodesResponse:
+    properties:
+      base:
+        example: USD
+        type: string
+      quote:
+        example: EUR
+        type: string
+      updated_at:
+        example: "2025-01-02T15:04:05Z"
+        type: string
+      value:
+        example: 0.9231
+        type: number
+    type: object
+  handler.GetByUpdateIDResponse:
+    properties:
+      base:
+        example: USD
+        type: string
+      quote:
+        example: EUR
+        type: string
+      update_id:
+        example: 77b5d9f5-0569-47e3-aee2-f659d59fbd97
+        type: string
+      updated_at:
+        example: "2025-01-02T15:04:05Z"
+        type: string
+      value:
+        example: 0.9231
+        type: number
+    type: object
+  handler.ScheduleUpdateRequest:
+    properties:
+      base:
+        example: USD
+        type: string
+      quote:
+        example: EUR
+        type: string
+    type: object
+  handler.ScheduleUpdateResponse:
+    properties:
+      update_id:
+        example: 77b5d9f5-0569-47e3-aee2-f659d59fbd97
+        type: string
+    type: object
+  handler.errorResponse:
+    properties:
+      error:
+        example: rate not found
+        type: string
+    type: object
+info:
+  contact: {}
+  description: API for scheduling and retrieving foreign exchange rates
+  title: FX Rates API
+  version: "1.0"
+paths:
+  /rates/{base}/{quote}:
+    get:
+      description: Get the latest applied FX rate by base/quote codes
+      parameters:
+      - description: Base currency code
+        example: USD
+        in: path
+        name: base
+        required: true
+        type: string
+      - description: Quote currency code
+        example: EUR
+        in: path
+        name: quote
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.GetByCodesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+      summary: Get latest rate by codes
+      tags:
+      - Rates
+  /rates/updates:
+    post:
+      consumes:
+      - application/json
+      description: Schedule a rate update for a currency pair
+      parameters:
+      - description: Update parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ScheduleUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handler.ScheduleUpdateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+      summary: Schedule rate update
+      tags:
+      - Rates
+  /rates/updates/{id}:
+    get:
+      description: Get the applied rate for a scheduled update ID
+      parameters:
+      - description: Update ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.GetByUpdateIDResponse'
+        "202":
+          description: rate update pending
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.errorResponse'
+      summary: Get rate by update ID
+      tags:
+      - Rates
+swagger: "2.0"

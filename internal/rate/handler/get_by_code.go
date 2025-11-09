@@ -13,12 +13,24 @@ import (
 )
 
 type GetByCodesResponse struct {
-	Base      string    `json:"base"`
-	Quote     string    `json:"quote"`
-	Value     float64   `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Base      string    `json:"base" example:"USD"`
+	Quote     string    `json:"quote" example:"EUR"`
+	Value     float64   `json:"value" example:"0.9231"`
+	UpdatedAt time.Time `json:"updated_at" example:"2025-01-02T15:04:05Z"`
 }
 
+// GetByCodes godoc
+// @Summary Get latest rate by codes
+// @Description Get the latest applied FX rate by base/quote codes
+// @Tags Rates
+// @Produce json
+// @Param base path string true "Base currency code" example(USD)
+// @Param quote path string true "Quote currency code" example(EUR)
+// @Success 200 {object} GetByCodesResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /rates/{base}/{quote} [get]
 func (h *Handler) GetByCodes(w http.ResponseWriter, r *http.Request) {
 	base := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "base")))
 	quote := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "quote")))

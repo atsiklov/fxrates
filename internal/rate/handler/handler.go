@@ -29,7 +29,7 @@ func NewRateHandler(currencyValidator CurrencyValidator, rateService RateService
 }
 
 type errorResponse struct {
-	Error string `json:"error"`
+	Error string `json:"error" example:"something bad happened"`
 }
 
 func writeError(w http.ResponseWriter, statusCode int, errorMsg string) {

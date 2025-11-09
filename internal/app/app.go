@@ -58,7 +58,7 @@ func Run() error {
 
 	// Load supported currencies
 	supportedCurrencies, err := loadSupportedCurrencies(startupCtx, pool)
-	if err != nil {
+	if err != nil || len(supportedCurrencies) == 0 {
 		logrus.WithError(err).Error("Failed to load supported currencies")
 		return err
 	}

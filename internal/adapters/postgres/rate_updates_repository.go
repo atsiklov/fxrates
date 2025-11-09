@@ -52,7 +52,7 @@ func (r *RateUpdatesRepository) ScheduleNewOrGetExisting(ctx context.Context, ba
 	var updateID uuid.UUID
 	err := r.pool.QueryRow(ctx, q, base, quote, uuid.New()).Scan(&updateID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to ensure an update for '%q/%q: %w", base, quote, err)
+		return uuid.Nil, fmt.Errorf("failed to ensure an update for '%s/%s': %w", base, quote, err)
 	}
 	return updateID, nil
 }

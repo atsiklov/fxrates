@@ -13,13 +13,24 @@ import (
 )
 
 type GetByUpdateIDResponse struct {
-	UpdateID  string    `json:"update_id"`
-	Base      string    `json:"base"`
-	Quote     string    `json:"quote"`
-	Value     float64   `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	UpdateID  string    `json:"update_id" example:"77b5d9f5-0569-47e3-aee2-f659d59fbd97"`
+	Base      string    `json:"base" example:"USD"`
+	Quote     string    `json:"quote" example:"EUR"`
+	Value     float64   `json:"value" example:"0.9231"`
+	UpdatedAt time.Time `json:"updated_at" example:"2025-01-02T15:04:05Z"`
 }
 
+// GetByUpdateID godoc
+// @Summary Get rate by update ID
+// @Description Get the applied rate for a scheduled update ID
+// @Tags Rates
+// @Produce json
+// @Param id path string true "Update ID"
+// @Success 200 {object} GetByUpdateIDResponse
+// @Failure 202 {object} errorResponse "rate update pending"
+// @Failure 404 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /rates/updates/{id} [get]
 func (h *Handler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
 	rawID := chi.URLParam(r, "id")
 	updateID, err := uuid.Parse(rawID)
