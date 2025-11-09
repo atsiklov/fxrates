@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"fxrates/internal/domain"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -116,9 +115,8 @@ func (r *RateUpdatesRepository) GetPending(ctx context.Context) ([]domain.Pendin
 }
 
 type batchRow struct {
-	PairID    int64     `json:"pair_id"`
-	Value     float64   `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	PairID int64   `json:"pair_id"`
+	Value  float64 `json:"value"`
 }
 
 func (r *RateUpdatesRepository) SaveApplied(ctx context.Context, rates []domain.AppliedRate) error {
@@ -127,7 +125,7 @@ func (r *RateUpdatesRepository) SaveApplied(ctx context.Context, rates []domain.
 	}
 	payload := make([]batchRow, 0, len(rates))
 	for _, rate := range rates {
-		payload = append(payload, batchRow{rate.PairID, rate.Value, rate.UpdatedAt})
+		payload = append(payload, batchRow{PairID: rate.PairID, Value: rate.Value})
 	}
 
 	payloadJSON, err := json.Marshal(payload)

@@ -20,7 +20,7 @@ var (
 	ErrQuoteUnsupported = errors.New("quote currency not supported")
 )
 
-func (v *CurrencyValidator) ValidateCurrencyPair(base, quote string) error {
+func (v *CurrencyValidator) ValidatePair(base, quote string) error {
 	if base == "" {
 		return ErrBaseRequired
 	}

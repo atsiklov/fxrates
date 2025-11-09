@@ -25,6 +25,6 @@ func (s *Service) GetByCodes(ctx context.Context, base string, quote string) (*d
 	return s.rateRepo.GetByCodes(ctx, base, quote)
 }
 
-func NewService(RateUpdatesRepo adapters.RateUpdatesRepository, RateRepo adapters.RateRepository) *Service {
-	return &Service{rateUpdatesRepo: RateUpdatesRepo, rateRepo: RateRepo}
+func NewService(rateUpdatesRepo adapters.RateUpdatesRepository, rateRepo adapters.RateRepository) *Service {
+	return &Service{rateUpdatesRepo: rateUpdatesRepo, rateRepo: rateRepo}
 }

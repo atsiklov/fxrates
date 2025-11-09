@@ -46,6 +46,8 @@ func (h *Handler) GetByUpdateID(w http.ResponseWriter, r *http.Request) {
 
 	res := GetByUpdateIDResponse{
 		UpdateID:  updateID.String(),
+		Base:      rate.Base,
+		Quote:     rate.Quote,
 		Value:     rate.Value,
 		UpdatedAt: rate.UpdatedAt,
 	}

@@ -6,11 +6,13 @@ import (
 	"fxrates/internal/adapters"
 	"fxrates/internal/domain"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 const numWorkers = 5
+const perRequestTimeout = 3 * time.Second
 
 type pair struct {
 	Base  string
@@ -117,30 +119,40 @@ func getUniqueBases(pairsMap map[pair]float64) []string {
 }
 
 func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
-	for base := range workQueue { // each worker takes base currency code from queue and process it
-		processBase(ctx, workerID, base, rateClient, pairsMap, mu)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case base, ok := <-workQueue:
+			if !ok {
+				return
+			}
+			processBase(ctx, workerID, base, rateClient, pairsMap, mu)
+		}
 	}
 }
 
 // processBase fetches new values from external API and replaces values in pairs map
 func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
-	// Fetching rate for the specified "base" from external API
-	// ratesMap looks like:
+	reqCtx, cancel := context.WithTimeout(ctx, perRequestTimeout)
+	defer cancel()
+	// Fetching rates for the specified "base" from external API. Using context with timeout as we better interrupt
+	// request and process "base" on the next scheduler job rather than wait
+	// ratesMap will look like this:
 	// {
 	//		"MXN": 1.234,
 	//		"EUR": 1.431
 	// }
-	ratesMap, err := rateClient.GetExchangeRates(ctx, base)
+	ratesMap, err := rateClient.GetExchangeRates(reqCtx, base)
 	if err != nil {
 		logrus.Warnf("Base '%s' wasn't processed by Worker %d as external api call returned error: %s", base, workerID, err)
 		return
 	}
 
 	// Updating values (which are currently default -1.000) in pairs map
-	// Basically "base" is always fixed, so we iterate over ratesMap and on each iteration:
-	// - create pair like {"USD", "<other code>"}
-	// - check if it presents in pairs map
-	// - if it does, replace default value
+	// ---
+	// Basically "base" is always fixed, so we iterate over ratesMap and on each iteration we
+	// create pair like {"USD", "<other code>"} and check if it presents in pairs map. If it does, replacing value
 	for quote, v := range ratesMap {
 		p := pair{Base: base, Quote: quote}
 		if _, ok := pairsMap[p]; ok {
@@ -152,7 +164,7 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 }
 
 // doUpdateRates actually updates values in our domain rate using pairs map
-// - for each pending rate find corresponding pair and build applied rate adding value
+// - for each pending rate find corresponding pair and build applied rate with received value
 // - if desired pair absents, taking reversed pair and compute the value
 func doUpdateRates(ctx context.Context, pending []domain.PendingRate, pairsMap map[pair]float64, rateUpdatesRepo adapters.RateUpdatesRepository) (int, error) {
 	applied := make([]domain.AppliedRate, 0, len(pending))

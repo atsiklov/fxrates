@@ -13,43 +13,54 @@ import (
 type Scheduler struct {
 	rateUpdatesRepo adapters.RateUpdatesRepository
 	rateClient      adapters.RateClient
+	// -----
+	sched gocron.Scheduler
 }
 
-func (s *Scheduler) CreateAndRun() {
+func (s *Scheduler) Start(ctx context.Context) error {
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
-		logrus.Fatalf("Failed to create scheduler: %s", err) // todo: handle
+		return err
 	}
-	// defer func() { _ = scheduler.Shutdown() }() // todo
+	s.sched = scheduler
 
-	job := func(ctx context.Context) {
+	job := func(jobCtx context.Context) {
 		execID := uuid.NewString()
-		updErr := UpdatePendingRates(ctx, execID, s.rateUpdatesRepo, s.rateClient)
+		updErr := UpdatePendingRates(jobCtx, execID, s.rateUpdatesRepo, s.rateClient)
 		if updErr != nil {
-			logrus.Errorf("Update pending rates job %s failed: %v", execID, err)
+			logrus.Errorf("Update pending rates job %s failed: %v", execID, updErr)
 		}
 	}
 
 	_, err = scheduler.NewJob(
-		gocron.DurationJob(5*time.Second),
+		gocron.DurationJob(10*time.Second),
 		gocron.NewTask(job),
+		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	)
 
 	if err != nil {
-		logrus.Fatalf("Error creating job: %s", err) // todo: handle
+		return err
 	}
 
 	scheduler.Start()
 
-	// todo: завершение по сигналу
-	// sig := make(chan os.Signal, 1)
-	// signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	// <-sig
-	//
-	// todo: корректная остановка
-	// if err := s.Shutdown(); err != nil {
-	// 	log.Fatal(err)
-	// }
+	// Stop scheduler when the provided context is canceled.
+	go func() {
+		<-ctx.Done()
+		if sdErr := s.Shutdown(); sdErr != nil {
+			logrus.Errorf("Scheduler shutdown error: %v", sdErr)
+		}
+	}()
+	return nil
+}
+
+func (s *Scheduler) Shutdown() error {
+	if s.sched == nil {
+		return nil
+	}
+	err := s.sched.Shutdown()
+	s.sched = nil
+	return err
 }
 
 func NewScheduler(rateUpdatesRepo adapters.RateUpdatesRepository, rateClient adapters.RateClient) *Scheduler {

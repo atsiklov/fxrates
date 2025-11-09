@@ -23,7 +23,7 @@ func (h *Handler) GetByCodes(w http.ResponseWriter, r *http.Request) {
 	base := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "base")))
 	quote := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "quote")))
 
-	if err := h.validator.ValidateCurrencyPair(base, quote); err != nil {
+	if err := h.validator.ValidatePair(base, quote); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

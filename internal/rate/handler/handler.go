@@ -1,18 +1,31 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
-	"fxrates/internal/rate"
+	"fxrates/internal/domain"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
-type Handler struct {
-	validator *rate.CurrencyValidator
-	service   *rate.Service
+type RateService interface {
+	ScheduleUpdate(ctx context.Context, base, quote string) (uuid.UUID, error)
+	GetByUpdateID(ctx context.Context, id uuid.UUID) (*domain.AppliedRate, error)
+	GetByCodes(ctx context.Context, base, quote string) (*domain.AppliedRate, error)
 }
 
-func NewRateHandler(RateService *rate.Service, CurrencyValidator *rate.CurrencyValidator) *Handler {
-	return &Handler{validator: CurrencyValidator, service: RateService}
+type CurrencyValidator interface {
+	ValidatePair(base, quote string) error
+}
+
+type Handler struct {
+	validator CurrencyValidator
+	service   RateService
+}
+
+func NewRateHandler(currencyValidator CurrencyValidator, rateService RateService) *Handler {
+	return &Handler{validator: currencyValidator, service: rateService}
 }
 
 type errorResponse struct {
