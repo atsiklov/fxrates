@@ -3,15 +3,89 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"fxrates/internal/domain"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RateUpdatesRepository struct {
 	pool *pgxpool.Pool
+}
+
+func (r *RateUpdatesRepository) ScheduleNewOrGetExisting(ctx context.Context, base string, quote string) (uuid.UUID, error) {
+	const q = `
+		with 
+	
+		-- 1) ensure pair exists
+		ins_pair as (
+			insert into fx_pairs(base, quote) values ($1, $2)
+			on conflict (base, quote) do nothing
+			returning id
+		),
+		-- 2) get pair id (in case nothing was inserted on 1 step)
+		pair as (
+			select id from fx_pairs where base = $1 and quote = $2
+		),
+		-- 3) check if such pair update with status 'pending' already exists
+		existing as (
+			select fru.update_id from fx_rate_updates fru join pair p on fru.pair_id = p.id
+			where fru.status = 'pending' limit 1
+		),
+		-- 4) if doesn't exist -> create new record
+		ins as (
+			insert into fx_rate_updates (pair_id, update_id, status, updated_at)
+			select p.id, $3, 'pending', now() from pair p
+			where not exists (select 1 from existing)
+			returning update_id
+		)
+		-- 5) returning either existing update_id or new one. Never both - impossible
+		select update_id from existing
+		union all
+		select update_id from ins
+		limit 1;
+	`
+
+	var updateID uuid.UUID
+	err := r.pool.QueryRow(ctx, q, base, quote, uuid.New()).Scan(&updateID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to ensure an update for '%q/%q: %w", base, quote, err)
+	}
+	return updateID, nil
+}
+
+func (r *RateUpdatesRepository) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (*domain.AppliedRate, error) {
+	const q = `
+        select fp.id, fp.base, fp.quote, coalesce(fru.value, 0.0) as value, fru.updated_at, fru.status
+        from fx_rate_updates fru join fx_pairs fp on fru.pair_id = fp.id
+        where fru.update_id = $1;
+    `
+
+	var rate domain.AppliedRate
+	var status string
+
+	if err := r.pool.QueryRow(ctx, q, updateID).Scan(
+		&rate.PairID,
+		&rate.Base,
+		&rate.Quote,
+		&rate.Value,
+		&rate.UpdatedAt,
+		// -----
+		&status,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrRateNotFound
+		}
+		return nil, fmt.Errorf("failed to select rate for update ID %q: %w", updateID, err)
+	}
+	if status != "applied" {
+		return nil, domain.ErrRateNotApplied
+	}
+	return &rate, nil
 }
 
 func (r *RateUpdatesRepository) GetPending(ctx context.Context) ([]domain.PendingRate, error) {
@@ -23,22 +97,22 @@ func (r *RateUpdatesRepository) GetPending(ctx context.Context) ([]domain.Pendin
 
 	rows, err := r.pool.Query(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query pending rates: %w", err)
 	}
 	defer rows.Close()
 
-	rates := make([]domain.PendingRate, 0, 64)
+	pending := make([]domain.PendingRate, 0, 64)
 	for rows.Next() {
-		var rate domain.PendingRate
-		if err = rows.Scan(&rate.PairID, &rate.Base, &rate.Quote); err != nil {
-			return nil, err
+		var pr domain.PendingRate
+		if err = rows.Scan(&pr.PairID, &pr.Base, &pr.Quote); err != nil {
+			return nil, fmt.Errorf("failed to scan pending rate: %w", err)
 		}
-		rates = append(rates, rate)
+		pending = append(pending, pr)
 	}
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error iterating pending rates: %w", err)
 	}
-	return rates, nil
+	return pending, nil
 }
 
 type batchRow struct {
@@ -58,7 +132,7 @@ func (r *RateUpdatesRepository) SaveApplied(ctx context.Context, rates []domain.
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal applied rates: %w", err)
 	}
 
 	const q = `
@@ -85,17 +159,20 @@ func (r *RateUpdatesRepository) SaveApplied(ctx context.Context, rates []domain.
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	_, err = tx.Exec(ctx, q, json.RawMessage(payloadJSON))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
 }
 
-func NewPostgresRateUpdatesRepository(pool *pgxpool.Pool) *RateUpdatesRepository {
+func NewRateUpdatesRepository(pool *pgxpool.Pool) *RateUpdatesRepository {
 	return &RateUpdatesRepository{pool: pool}
 }

@@ -8,6 +8,7 @@ import (
 	"fxrates/internal/config/db"
 	myHTTP "fxrates/internal/config/http"
 	"fxrates/internal/rate"
+	"fxrates/internal/rate/handler"
 	"net/http"
 	"time"
 
@@ -27,7 +28,13 @@ func main() {
 	defer pool.Close()
 	logrus.Info("Postgres connection successful")
 
-	// set up an http client to make external rate requests
+	// load supported currencies from db
+	supportedCurrencies, err := config.LoadSupportedCurrencies(ctx, pool)
+	if err != nil {
+		logrus.Fatalf("Failed to load supported currencies") // todo: handle
+	}
+	logrus.Info("Supported currencies loaded")
+
 	baseHTTPClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -36,22 +43,23 @@ func main() {
 	rateClient := httpclient.NewExchangeRateClient(baseHTTPClient, "https://example.com/latest")
 
 	// repositories
-	rateUpdatesRepo := postgres.NewPostgresRateUpdatesRepository(pool)
-	rateRepo := postgres.NewPostgresRateRepository(pool)
+	rateUpdatesRepo := postgres.NewRateUpdatesRepository(pool)
+	rateRepo := postgres.NewRateRepository(pool)
 
 	// services
-	rateService := rate.NewService(rateRepo)
+	rateService := rate.NewService(rateUpdatesRepo, rateRepo)
+	rateValidator := rate.NewValidator(supportedCurrencies)
 	scheduler := rate.NewScheduler(rateUpdatesRepo, rateClient)
 	scheduler.CreateAndRun()
 	logrus.Info("Scheduler activation successful")
 
 	// handlers
-	rateHandler := rate.NewHandler(rateService)
+	rateHandler := handler.NewRateHandler(rateService, rateValidator)
 
 	router := chi.NewRouter() // todo: add logging
-	router.Post("/api/v1/rates/updates", rateHandler.UpdateRate)
+	router.Post("/api/v1/rates/updates", rateHandler.ScheduleUpdate)
 	router.Get("/api/v1/rates/updates/{id}", rateHandler.GetByUpdateID)
-	router.Get("/api/v1/rates/{code}", rateHandler.GetRate)
+	router.Get("/api/v1/rates/{base}/{quote}", rateHandler.GetByCodes)
 
 	logrus.Info("Starting http server")
 	myHTTP.StartServer(appCfg.HTTPServer, router)

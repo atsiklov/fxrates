@@ -1,8 +1,10 @@
 package config
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -57,4 +59,25 @@ func Init() *AppConfig {
 	}
 
 	return &cfg
+}
+
+func LoadSupportedCurrencies(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{}, error) {
+	rows, err := pool.Query(ctx, `select code from currencies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	m := make(map[string]struct{})
+	for rows.Next() {
+		var c string
+		if err = rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		m[c] = struct{}{}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return m, nil
 }

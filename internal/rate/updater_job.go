@@ -2,6 +2,7 @@ package rate
 
 import (
 	"context"
+	"fmt"
 	"fxrates/internal/adapters"
 	"fxrates/internal/domain"
 	"sync"
@@ -16,12 +17,12 @@ type pair struct {
 	Quote string
 }
 
-// UpdateRates updates rate in database using values from external API
-func UpdateRates(ctx context.Context, execID string, repo adapters.RateUpdatesRepository, client adapters.RateClient) error {
+// UpdatePendingRates updates rate in database using values from external API
+func UpdatePendingRates(ctx context.Context, execID string, rateUpdatesRepo adapters.RateUpdatesRepository, rateClient adapters.RateClient) error {
 	// step 1: get rate from DB that require update
-	pending, err := repo.GetPending(ctx)
+	pending, err := rateUpdatesRepo.GetPending(ctx)
 	if err != nil {
-		return err // todo: add custom error
+		return fmt.Errorf("failed to get pending rates: %w", err)
 	}
 
 	if len(pending) == 0 {
@@ -45,10 +46,10 @@ func UpdateRates(ctx context.Context, execID string, repo adapters.RateUpdatesRe
 	pairsMap := getUniquePairs(pending)
 
 	// step 3: process pairs in parallel using worker pool
-	processInParallel(ctx, client, pairsMap)
+	processInParallel(ctx, rateClient, pairsMap)
 
 	// step 4:
-	countUpdated, err := doUpdateRates(ctx, pending, pairsMap, repo)
+	countUpdated, err := doUpdateRates(ctx, pending, pairsMap, rateUpdatesRepo)
 	if err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func getUniquePairs(pending []domain.PendingRate) map[pair]float64 {
 }
 
 // processInParallel runs parallel workers, which fetch rate from external API and replace values in pairs map
-func processInParallel(ctx context.Context, client adapters.RateClient, pairsMap map[pair]float64) {
+func processInParallel(ctx context.Context, rateClient adapters.RateClient, pairsMap map[pair]float64) {
 	// Extracting unique "bases"
 	// Explanation: pairsMap can contain same "base" values, for example:
 	// {
@@ -94,7 +95,7 @@ func processInParallel(ctx context.Context, client adapters.RateClient, pairsMap
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			runWorker(ctx, workerID, workQueue, client, pairsMap, &mu)
+			runWorker(ctx, workerID, workQueue, rateClient, pairsMap, &mu)
 		}(i)
 	}
 
@@ -115,23 +116,23 @@ func getUniqueBases(pairsMap map[pair]float64) []string {
 	return bases
 }
 
-func runWorker(ctx context.Context, workerID int, workQueue <-chan string, client adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
+func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
 	for base := range workQueue { // each worker takes base currency code from queue and process it
-		processBase(ctx, workerID, base, client, pairsMap, mu)
+		processBase(ctx, workerID, base, rateClient, pairsMap, mu)
 	}
 }
 
 // processBase fetches new values from external API and replaces values in pairs map
-func processBase(ctx context.Context, workerID int, base string, client adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
+func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[pair]float64, mu *sync.Mutex) {
 	// Fetching rate for the specified "base" from external API
 	// ratesMap looks like:
 	// {
 	//		"MXN": 1.234,
 	//		"EUR": 1.431
 	// }
-	ratesMap, err := client.GetExchangeRates(ctx, base)
+	ratesMap, err := rateClient.GetExchangeRates(ctx, base)
 	if err != nil {
-		logrus.Warnf("Base '%s' wasn't processed as Worker %d couldn't get rates from external api: %s", base, workerID, err)
+		logrus.Warnf("Base '%s' wasn't processed by Worker %d as external api call returned error: %s", base, workerID, err)
 		return
 	}
 
@@ -153,7 +154,7 @@ func processBase(ctx context.Context, workerID int, base string, client adapters
 // doUpdateRates actually updates values in our domain rate using pairs map
 // - for each pending rate find corresponding pair and build applied rate adding value
 // - if desired pair absents, taking reversed pair and compute the value
-func doUpdateRates(ctx context.Context, pending []domain.PendingRate, pairsMap map[pair]float64, repo adapters.RateUpdatesRepository) (int, error) {
+func doUpdateRates(ctx context.Context, pending []domain.PendingRate, pairsMap map[pair]float64, rateUpdatesRepo adapters.RateUpdatesRepository) (int, error) {
 	applied := make([]domain.AppliedRate, 0, len(pending))
 
 	for _, pr := range pending {
@@ -182,9 +183,9 @@ func doUpdateRates(ctx context.Context, pending []domain.PendingRate, pairsMap m
 		return 0, nil
 	}
 
-	err := repo.SaveApplied(ctx, applied) // todo: handle errors
+	err := rateUpdatesRepo.SaveApplied(ctx, applied)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to update rates: %w", err)
 	}
 
 	return len(applied), nil

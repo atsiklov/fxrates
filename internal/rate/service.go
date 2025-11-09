@@ -9,21 +9,22 @@ import (
 )
 
 type Service struct {
-	repo adapters.RateRepository
+	rateUpdatesRepo adapters.RateUpdatesRepository
+	rateRepo        adapters.RateRepository
+}
+
+func (s *Service) ScheduleUpdate(ctx context.Context, base string, quote string) (uuid.UUID, error) {
+	return s.rateUpdatesRepo.ScheduleNewOrGetExisting(ctx, base, quote)
 }
 
 func (s *Service) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (*domain.AppliedRate, error) {
-	return s.repo.GetByUpdateID(ctx, updateID)
+	return s.rateUpdatesRepo.GetByUpdateID(ctx, updateID)
 }
 
-func (s *Service) UpdateByCode(ctx context.Context, base string, quote string) (uuid.UUID, error) {
-	return s.repo.UpdateByCode(ctx, base, quote)
+func (s *Service) GetByCodes(ctx context.Context, base string, quote string) (*domain.AppliedRate, error) {
+	return s.rateRepo.GetByCodes(ctx, base, quote)
 }
 
-func (s *Service) GetByCode(ctx context.Context, base string, quote string) (*domain.AppliedRate, error) {
-	return s.repo.GetByCode(ctx, base, quote)
-}
-
-func NewService(repo adapters.RateRepository) *Service {
-	return &Service{repo: repo}
+func NewService(RateUpdatesRepo adapters.RateUpdatesRepository, RateRepo adapters.RateRepository) *Service {
+	return &Service{rateUpdatesRepo: RateUpdatesRepo, rateRepo: RateRepo}
 }

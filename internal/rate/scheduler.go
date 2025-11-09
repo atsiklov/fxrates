@@ -18,15 +18,15 @@ type Scheduler struct {
 func (s *Scheduler) CreateAndRun() {
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
-		logrus.Fatalf("Error creating scheduler: %s", err) // todo: handle
+		logrus.Fatalf("Failed to create scheduler: %s", err) // todo: handle
 	}
-	// defer func() { _ = scheduler.Shutdown() }()
+	// defer func() { _ = scheduler.Shutdown() }() // todo
 
 	job := func(ctx context.Context) {
 		execID := uuid.NewString()
-		err := UpdateRates(ctx, execID, s.rateUpdatesRepo, s.rateClient)
-		if err != nil {
-			logrus.Error("Internal job error") // todo: handle error
+		updErr := UpdatePendingRates(ctx, execID, s.rateUpdatesRepo, s.rateClient)
+		if updErr != nil {
+			logrus.Errorf("Update pending rates job %s failed: %v", execID, err)
 		}
 	}
 
