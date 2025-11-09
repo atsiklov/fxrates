@@ -10,8 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// StartServer runs HTTP server and shuts it down gracefully on ctx cancellation.
-func StartServer(ctx context.Context, cfg config.HTTPServer, router *chi.Mux) error {
+// Start runs HTTP server and shuts it down gracefully on ctx cancellation.
+func Start(ctx context.Context, cfg config.HTTPServer, router *chi.Mux) error {
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,

@@ -1,12 +1,9 @@
 package config
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -15,11 +12,12 @@ type HTTPServer struct {
 }
 
 type DbServer struct {
-	Host string `mapstructure:"host"`
-	Port string `mapstructure:"port"`
-	User string `mapstructure:"user"`
-	Pass string `mapstructure:"pass"`
-	Name string `mapstructure:"name"`
+	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Pass     string `mapstructure:"pass"`
+	Name     string `mapstructure:"name"`
+	MaxConns int32  `mapstructure:"max_conns"`
 }
 
 func (config *DbServer) GetConnectionStr() string {
@@ -32,52 +30,43 @@ func (config *DbServer) GetConnectionStr() string {
 type AppConfig struct {
 	HTTPServer HTTPServer `mapstructure:"http_server"`
 	DbServer   DbServer   `mapstructure:"db_server"`
+	HTTPClient HTTPClient `mapstructure:"http_client"`
 }
 
-func Init() *AppConfig {
+type HTTPClient struct {
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+}
+
+func Init() (*AppConfig, error) {
 	var cfg AppConfig
 
 	if err := godotenv.Load(); err != nil {
-		logrus.Fatalf("Error loading .env file: %s", err) // todo: handle
+		return nil, fmt.Errorf("error loading .env file: %w", err)
 	}
 
 	viper.SetConfigFile("config.yaml")
 	viper.SetConfigType("yaml")
 	if err := viper.ReadInConfig(); err != nil {
-		logrus.Fatalf("Error reading config file, %s", err) // todo: handle
+		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	// db server
+	viper.SetDefault("db_server.max_conns", 10)
+	viper.SetDefault("http_client.timeout_seconds", 10)
+
+	// db server env vars
 	_ = viper.BindEnv("db_server.host", "DB_HOST")
 	_ = viper.BindEnv("db_server.port", "DB_PORT")
 	_ = viper.BindEnv("db_server.user", "DB_USER")
 	_ = viper.BindEnv("db_server.pass", "DB_PASS")
 	_ = viper.BindEnv("db_server.name", "DB_NAME")
+	_ = viper.BindEnv("db_server.max_conns", "DB_MAX_CONNS")
+
+	// http client env vars
+	_ = viper.BindEnv("http_client.timeout_seconds", "HTTP_CLIENT_TIMEOUT_SECONDS")
 
 	if err := viper.Unmarshal(&cfg); err != nil {
-		logrus.Fatalf("Error unmarshalling config: %s", err) // todo: handle
+		return nil, fmt.Errorf("error unmarshalling config: %w", err)
 	}
 
-	return &cfg
-}
-
-func LoadSupportedCurrencies(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{}, error) {
-	rows, err := pool.Query(ctx, `select code from currencies`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	m := make(map[string]struct{})
-	for rows.Next() {
-		var c string
-		if err = rows.Scan(&c); err != nil {
-			return nil, err
-		}
-		m[c] = struct{}{}
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &cfg, nil
 }

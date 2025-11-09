@@ -7,3 +7,7 @@ db_server:
   user: ""
   pass: ""
   name: ""
+  max_conns: 10
+
+http_client:
+  timeout_seconds: 10
