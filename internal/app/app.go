@@ -82,13 +82,13 @@ func Run() error {
 	)
 
 	// Repositories
-	rateUpdatesRepo := postgres.NewRateUpdatesRepository(pool)
+	rateUpdateRepo := postgres.NewRateUpdateRepository(pool)
 	rateRepo := postgres.NewRateRepository(pool)
 
 	// Services
-	rateService := rate.NewService(rateUpdatesRepo, rateRepo)
+	rateService := rate.NewService(rateUpdateRepo, rateRepo)
 	rateValidator := rate.NewValidator(supportedCurrencies)
-	scheduler := rate.NewScheduler(rateUpdatesRepo, rateClient)
+	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient)
 	// Ensure scheduler stops before DB pool closes
 	defer func() {
 		if shutDownErr := scheduler.Shutdown(); shutDownErr != nil {

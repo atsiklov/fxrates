@@ -23,7 +23,7 @@ type ScheduleUpdateResponse struct {
 // @Tags Rates
 // @Accept json
 // @Produce json
-// @Param request body ScheduleUpdateRequest true "Update parameters"
+// @Param request body ScheduleUpdateRequest true "ApplyUpdates parameters"
 // @Success 202 {object} ScheduleUpdateResponse
 // @Failure 400 {object} errorResponse
 // @Failure 500 {object} errorResponse

@@ -3,20 +3,20 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fxrates/internal/domain"
+	"fxrates/internal/rate"
 	"net/http"
 
 	"github.com/google/uuid"
 )
 
-type RateService interface {
-	ScheduleUpdate(ctx context.Context, base, quote string) (uuid.UUID, error)
-	GetByUpdateID(ctx context.Context, id uuid.UUID) (*domain.AppliedRate, error)
-	GetByCodes(ctx context.Context, base, quote string) (*domain.AppliedRate, error)
-}
-
 type CurrencyValidator interface {
 	ValidatePair(base, quote string) error
+}
+
+type RateService interface {
+	ScheduleUpdate(ctx context.Context, base, quote string) (uuid.UUID, error)
+	GetByUpdateID(ctx context.Context, id uuid.UUID) (rate.View, error)
+	GetByCodes(ctx context.Context, base, quote string) (rate.View, error)
 }
 
 type Handler struct {

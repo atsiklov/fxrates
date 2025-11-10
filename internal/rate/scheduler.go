@@ -11,7 +11,7 @@ import (
 )
 
 type Scheduler struct {
-	rateUpdatesRepo adapters.RateUpdatesRepository
+	rateUpdatesRepo adapters.RateUpdateRepository
 	rateClient      adapters.RateClient
 	// -----
 	sched gocron.Scheduler
@@ -28,7 +28,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		execID := uuid.NewString()
 		updErr := UpdatePendingRates(jobCtx, execID, s.rateUpdatesRepo, s.rateClient)
 		if updErr != nil {
-			logrus.Errorf("Update pending rates job %s failed: %v", execID, updErr)
+			logrus.Errorf("ApplyUpdates pending rates job %s failed: %v", execID, updErr)
 		}
 	}
 
@@ -63,6 +63,6 @@ func (s *Scheduler) Shutdown() error {
 	return err
 }
 
-func NewScheduler(rateUpdatesRepo adapters.RateUpdatesRepository, rateClient adapters.RateClient) *Scheduler {
+func NewScheduler(rateUpdatesRepo adapters.RateUpdateRepository, rateClient adapters.RateClient) *Scheduler {
 	return &Scheduler{rateUpdatesRepo: rateUpdatesRepo, rateClient: rateClient}
 }

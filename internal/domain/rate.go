@@ -1,8 +1,12 @@
 package domain
 
-import "time"
+import (
+	"time"
 
-type AppliedRate struct {
+	"github.com/google/uuid"
+)
+
+type Rate struct {
 	PairID    int64
 	Base      string
 	Quote     string
@@ -10,8 +14,22 @@ type AppliedRate struct {
 	UpdatedAt time.Time
 }
 
-type PendingRate struct {
-	PairID int64
-	Base   string
-	Quote  string
+type RateUpdateStatus string
+
+const (
+	StatusPending RateUpdateStatus = "pending"
+	StatusApplied RateUpdateStatus = "applied"
+)
+
+type PendingRateUpdate struct {
+	UpdateID uuid.UUID
+	PairID   int64
+	Base     string
+	Quote    string
+}
+
+type AppliedRateUpdate struct {
+	UpdateID uuid.UUID
+	PairID   int64
+	Value    float64
 }

@@ -40,7 +40,7 @@ func (h *Handler) GetByCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rate, err := h.service.GetByCodes(r.Context(), base, quote)
+	view, err := h.service.GetByCodes(r.Context(), base, quote)
 	if err != nil {
 		if errors.Is(err, domain.ErrRateNotFound) {
 			writeError(w, http.StatusNotFound, "rate not found")
@@ -55,8 +55,8 @@ func (h *Handler) GetByCodes(w http.ResponseWriter, r *http.Request) {
 	res := GetByCodesResponse{
 		Base:      base,
 		Quote:     quote,
-		Value:     rate.Value,
-		UpdatedAt: rate.UpdatedAt,
+		Value:     *view.Value,
+		UpdatedAt: *view.UpdatedAt,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

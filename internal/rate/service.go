@@ -2,6 +2,7 @@ package rate
 
 import (
 	"context"
+	"fmt"
 	"fxrates/internal/adapters"
 	"fxrates/internal/domain"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type Service struct {
-	rateUpdatesRepo adapters.RateUpdatesRepository
+	rateUpdatesRepo adapters.RateUpdateRepository
 	rateRepo        adapters.RateRepository
 }
 
@@ -17,14 +18,39 @@ func (s *Service) ScheduleUpdate(ctx context.Context, base string, quote string)
 	return s.rateUpdatesRepo.ScheduleNewOrGetExisting(ctx, base, quote)
 }
 
-func (s *Service) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (*domain.AppliedRate, error) {
-	return s.rateUpdatesRepo.GetByUpdateID(ctx, updateID)
+func (s *Service) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (View, error) {
+	rate, status, err := s.rateRepo.GetByUpdateID(ctx, updateID)
+	if err != nil {
+		return View{}, err
+	}
+	switch status {
+	case domain.StatusApplied:
+		return View{
+			Base:      rate.Base,
+			Quote:     rate.Quote,
+			Status:    status,
+			Value:     &rate.Value,     // never nil (DB constraint)
+			UpdatedAt: &rate.UpdatedAt, // never nil (DB constraint)
+		}, nil
+	case domain.StatusPending:
+		return View{
+			Base:   rate.Base,
+			Quote:  rate.Quote,
+			Status: status,
+		}, nil
+	default:
+		return View{}, fmt.Errorf("unknown rate update status: %q", status)
+	}
 }
 
-func (s *Service) GetByCodes(ctx context.Context, base string, quote string) (*domain.AppliedRate, error) {
-	return s.rateRepo.GetByCodes(ctx, base, quote)
+func (s *Service) GetByCodes(ctx context.Context, base string, quote string) (View, error) {
+	rate, err := s.rateRepo.GetByCodes(ctx, base, quote)
+	if err != nil {
+		return View{}, err
+	}
+	return View{Base: rate.Base, Quote: rate.Quote, Value: &rate.Value, UpdatedAt: &rate.UpdatedAt}, nil
 }
 
-func NewService(rateUpdatesRepo adapters.RateUpdatesRepository, rateRepo adapters.RateRepository) *Service {
+func NewService(rateUpdatesRepo adapters.RateUpdateRepository, rateRepo adapters.RateRepository) *Service {
 	return &Service{rateUpdatesRepo: rateUpdatesRepo, rateRepo: rateRepo}
 }
