@@ -19,6 +19,6 @@ func NewRouter(rateHandler *handler.Handler) *chi.Mux {
 
 	router.Post("/api/v1/rates/updates", rateHandler.ScheduleUpdate)
 	router.Get("/api/v1/rates/updates/{id}", rateHandler.GetByUpdateID)
-	router.Get("/api/v1/rates/{base}/{quote}", rateHandler.GetByCodes)
+	router.Get("/api/v1/rates/{base:[A-Za-z]{3}}/{quote:[A-Za-z]{3}}", rateHandler.GetByCodes)
 	return router
 }

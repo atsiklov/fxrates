@@ -44,7 +44,6 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdatesRepo adap
 	// }
 	// ! NOTE 1: all the values are set as default -1.0
 	// ! NOTE 2: map doesn't contain reversed pairs (for example if "USD/EUR" presents, then "EUR/USD" will not)
-	// !!! NOTE 3: this map will be our store which will be used to update values in rate
 	pairsMap := getUniquePairs(pending)
 
 	// step 3: process pairs in parallel using worker pool

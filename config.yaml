@@ -18,3 +18,6 @@ logging:
 exchange_rate_api:
   base_url: "https://v6.exchangerate-api.com/v6"
   api_key: ""
+
+scheduler:
+  job_duration_sec: 30

@@ -14,7 +14,8 @@ type Scheduler struct {
 	rateUpdatesRepo adapters.RateUpdateRepository
 	rateClient      adapters.RateClient
 	// -----
-	sched gocron.Scheduler
+	sched       gocron.Scheduler
+	jobDuration time.Duration
 }
 
 func (s *Scheduler) Start(ctx context.Context) error {
@@ -33,7 +34,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 
 	_, err = scheduler.NewJob(
-		gocron.DurationJob(10*time.Second),
+		gocron.DurationJob(s.jobDuration),
 		gocron.NewTask(job),
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	)
@@ -63,6 +64,9 @@ func (s *Scheduler) Shutdown() error {
 	return err
 }
 
-func NewScheduler(rateUpdatesRepo adapters.RateUpdateRepository, rateClient adapters.RateClient) *Scheduler {
-	return &Scheduler{rateUpdatesRepo: rateUpdatesRepo, rateClient: rateClient}
+func NewScheduler(rateUpdatesRepo adapters.RateUpdateRepository, rateClient adapters.RateClient, jobDuration time.Duration) *Scheduler {
+	if jobDuration <= 0 {
+		jobDuration = 30 * time.Second
+	}
+	return &Scheduler{rateUpdatesRepo: rateUpdatesRepo, rateClient: rateClient, jobDuration: jobDuration}
 }

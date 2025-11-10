@@ -81,7 +81,7 @@ func (r *RateUpdateRepository) ApplyUpdates(ctx context.Context, applied []domai
 		with
 		
 		-- step 1: parsing input
-		input_rows as (select * from json_to_recordset($1::json) as r(pair_id bigint, update_id uuid, value numeric)),
+		input_rows as (select * from json_to_recordset($1::json) as r(update_id uuid, pair_id bigint, value numeric)),
 		
 		-- step 2: updating fx_rate_updates records and get updated
 		update_fru as (

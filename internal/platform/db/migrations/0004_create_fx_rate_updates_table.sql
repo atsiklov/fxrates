@@ -3,7 +3,7 @@ create table fx_rate_updates (
     pair_id    bigint not null references fx_pairs(id) on delete cascade,
     update_id  uuid   unique not null,
     status     text   not null,
-    value      numeric(20,10),
+    value      numeric(16,8),
     updated_at timestamptz not null default now(),
     constraint must_have_value_when_status_applied check ((status = 'applied') = (value is not null))
 );

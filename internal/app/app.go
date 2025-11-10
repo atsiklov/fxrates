@@ -88,7 +88,7 @@ func Run() error {
 	// Services
 	rateService := rate.NewService(rateUpdateRepo, rateRepo)
 	rateValidator := rate.NewValidator(supportedCurrencies)
-	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient)
+	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient, time.Duration(appCfg.Scheduler.JobDurationSec)*time.Second)
 	// Ensure scheduler stops before DB pool closes
 	defer func() {
 		if shutDownErr := scheduler.Shutdown(); shutDownErr != nil {

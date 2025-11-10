@@ -33,6 +33,7 @@ type AppConfig struct {
 	HTTPClient      HTTPClient      `mapstructure:"http_client"`
 	ExchangeRateAPI ExchangeRateAPI `mapstructure:"exchange_rate_api"`
 	Logging         Logging         `mapstructure:"logging"`
+	Scheduler       Scheduler       `mapstructure:"scheduler"`
 }
 
 type HTTPClient struct {
@@ -46,6 +47,10 @@ type Logging struct {
 type ExchangeRateAPI struct {
 	BaseURL string `mapstructure:"base_url"`
 	APIKey  string `mapstructure:"api_key"`
+}
+
+type Scheduler struct {
+	JobDurationSec int `mapstructure:"job_duration_sec"`
 }
 
 func Init() (*AppConfig, error) {
@@ -76,6 +81,9 @@ func Init() (*AppConfig, error) {
 	// exchange rate api env vars
 	_ = viper.BindEnv("exchange_rate_api.base_url", "EXCHANGE_RATE_API_BASE_URL")
 	_ = viper.BindEnv("exchange_rate_api.api_key", "EXCHANGE_RATE_API_KEY")
+
+	// scheduler env vars
+	_ = viper.BindEnv("scheduler.job_duration_sec", "JOB_DURATION_SEC")
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshalling config: %w", err)

@@ -18,7 +18,7 @@ type RateRepository struct {
 
 func (r *RateRepository) GetByCodes(ctx context.Context, base string, quote string) (domain.Rate, error) {
 	const q = `
-        select fp.id, fp.base, fp.quote, flr.value, flr.updated_at
+        select fp.id, fp.base, fp.quote, round(flr.value, 4) as value, flr.updated_at
         from fx_last_rates flr join fx_pairs fp on flr.pair_id = fp.id
         where fp.base = $1 and fp.quote = $2;
     `
@@ -42,15 +42,15 @@ func (r *RateRepository) GetByCodes(ctx context.Context, base string, quote stri
 
 func (r *RateRepository) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (domain.Rate, domain.RateUpdateStatus, error) {
 	const q = `
-	        select fp.id, 
-	           fp.base, 
-	           fp.quote, 
-	           case when fru.status = 'applied' then fru.value end as value,
-	           fru.updated_at, 
-	           fru.status
-	        from fx_rate_updates fru join fx_pairs fp on fru.pair_id = fp.id
-	        where fru.update_id = $1;
-	    `
+            select fp.id, 
+               fp.base, 
+               fp.quote, 
+               case when fru.status = 'applied' then round(fru.value, 4) end as value,
+               fru.updated_at, 
+               fru.status
+            from fx_rate_updates fru join fx_pairs fp on fru.pair_id = fp.id
+            where fru.update_id = $1;
+        `
 
 	var rate domain.Rate
 	var status domain.RateUpdateStatus
@@ -60,8 +60,8 @@ func (r *RateRepository) GetByUpdateID(ctx context.Context, updateID uuid.UUID) 
 		&rate.PairID,
 		&rate.Base,
 		&rate.Quote,
-		&rate.UpdatedAt,
 		&value,
+		&rate.UpdatedAt,
 		&status,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
