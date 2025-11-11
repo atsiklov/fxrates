@@ -41,7 +41,7 @@ func (c *ExchangeRateClient) GetExchangeRates(ctx context.Context, base string) 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status base %d for currency %q: %s", resp.StatusCode, base, resp.Status)
+		return nil, fmt.Errorf("unexpected status code %d for currency %q: %s", resp.StatusCode, base, resp.Status)
 	}
 
 	var body apiResponse

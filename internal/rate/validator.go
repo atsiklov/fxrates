@@ -6,10 +6,7 @@ import (
 )
 
 type CurrencyValidator struct {
-	// This might be moved to an interface like SupportChecker with Supports method, but I decided not to
-	// overcomplicate as it makes little sense at this stage.
-	// supportedCurrencies is READ ONLY COPY and safe for concurrent requests
-	supportedCurrencies map[string]struct{}
+	supportedCurrencies map[string]struct{} // READ ONLY COPY
 }
 
 var (

@@ -1,3 +1,4 @@
+-- +goose Up
 create table fx_rate_updates (
     id         bigserial primary key,
     pair_id    bigint not null references fx_pairs(id) on delete cascade,

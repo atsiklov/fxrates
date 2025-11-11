@@ -1,3 +1,4 @@
+-- +goose Up
 create table fx_pairs (
     id    bigserial primary key,
     base  text not null references currencies(code),
