@@ -33,10 +33,10 @@ func Run() error {
 	// Logger
 	logrus.SetOutput(os.Stdout)
 	cfgLevel := appCfg.Logging.Level
-	if parsedLvl, parseErr := logrus.ParseLevel(cfgLevel); parseErr != nil {
+	if parsedLevel, parseErr := logrus.ParseLevel(cfgLevel); parseErr != nil {
 		logrus.SetLevel(logrus.InfoLevel)
 	} else {
-		logrus.SetLevel(parsedLvl)
+		logrus.SetLevel(parsedLevel)
 	}
 	logrus.Info("✅ Config initialization successful")
 
@@ -66,7 +66,6 @@ func Run() error {
 		logrus.WithError(err).Error("Failed to load supported currencies")
 		return err
 	}
-	logrus.Info("✅ Supported currencies loaded")
 
 	// Base HTTP client (configurable timeout)
 	httpTimeout := time.Duration(appCfg.HTTPClient.TimeoutSeconds) * time.Second
@@ -110,7 +109,6 @@ func Run() error {
 	rateHandler := handler.NewRateHandler(rateValidator, rateService)
 	router := api.NewRouter(rateHandler)
 
-	logrus.Info("Starting http server")
 	// Block until context is canceled, then perform graceful shutdown.
 	if serverErr := httpserver.Start(ctx, appCfg.HTTPServer, router); serverErr != nil {
 		// Cancel the root context to stop scheduler and other in-flight work

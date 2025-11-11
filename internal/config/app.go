@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -56,8 +57,13 @@ type Scheduler struct {
 func Init() (*AppConfig, error) {
 	var cfg AppConfig
 
-	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf("error loading .env file: %w", err)
+	if os.Getenv("PROFILE") != "" {
+		// env vars will be passed from outside
+	} else {
+		// local: require .env
+		if err := godotenv.Load(); err != nil {
+			return nil, fmt.Errorf("error loading .env file: %w", err)
+		}
 	}
 
 	viper.SetConfigFile("config.yaml")

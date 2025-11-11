@@ -1,16 +1,73 @@
 services:
   postgres:
     image: postgres:17
-    container_name: postgres
-    restart: "no"
+    container_name: fxrates-postgres
+    restart: on-failure
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASS}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 3s
+      timeout: 5s
+      retries: 3
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    container_name: fxrates-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./internal/platform/db/migrations:/migrations:ro
+    command:
+      [
+        "-path=/migrations",
+        "-database=postgres://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME}?sslmode=disable",
+        "-verbose",
+        "up"
+      ]
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fxrates-backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      EXCHANGE_RATE_API_BASE_URL: ${EXCHANGE_RATE_API_BASE_URL:-https://v6.exchangerate-api.com/v6}
+      EXCHANGE_RATE_API_KEY: ${EXCHANGE_RATE_API_KEY:-}
+      JOB_DURATION_SEC: ${JOB_DURATION_SEC:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PROFILE: PROD
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./web/ui
+      dockerfile: Dockerfile
+    container_name: fxrates-ui
+    depends_on:
+      - backend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8080
+      VITE_PORT: 5173
+    ports:
+      - "5173:5173"
 
 volumes:
   postgres_data:

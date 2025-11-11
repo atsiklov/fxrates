@@ -1,18 +1,9 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
-
-const makeURL = (path: string) => {
-  if (!path.startsWith('/')) {
-    throw new Error(`Path "${path}" must start with a slash`)
-  }
-  return `${API_BASE_URL}${path}`
-}
-
 type ErrorResponse = {
   error?: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(makeURL(path), {
+  const response = await fetch(path, {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),

@@ -74,10 +74,10 @@ func getUniquePairs(pending []domain.PendingRateUpdate) map[pair]float64 {
 // processInParallel runs parallel workers, which fetch rate from external API and replace values in pairs map
 func processInParallel(ctx context.Context, rateClient adapters.RateClient, pairsMap map[pair]float64) {
 	// Extracting unique "bases"
-	// Explanation: pairsMap can contain same "base" values, for example:
+	// Explanation: pairsMap can contain same "Base" values, for example "USD":
 	// {
-	// 	{ Base: "USD", Quote: "EUR" } -> -1.000,
-	//	{ Base: "USD", Quote: "MXN" } -> -1.000
+	// 	{ Base: "USD", Quote: "EUR" } -> -1.0,
+	//	{ Base: "USD", Quote: "MXN" } -> -1.0
 	//  ...
 	// }
 	// These should not be separate requests. So let's extract only unique "bases" in order to optimize requests count
@@ -148,7 +148,7 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 		return
 	}
 
-	// Updating values (which are currently default -1.000) in pairs map
+	// Updating values (which are currently default -1.0) in pairs map
 	// ---
 	// Basically "base" is always fixed, so we iterate over ratesMap and on each iteration we
 	// create pair like {"USD", "<other code>"} and check if it presents in pairs map. If it does, replacing value
