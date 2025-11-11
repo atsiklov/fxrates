@@ -42,7 +42,7 @@ func (h *Handler) ScheduleUpdate(w http.ResponseWriter, r *http.Request) {
 	base := strings.ToUpper(strings.TrimSpace(req.Base))
 	quote := strings.ToUpper(strings.TrimSpace(req.Quote))
 
-	if err := h.validator.ValidatePair(base, quote); err != nil {
+	if err := h.validator.ValidateCodes(base, quote); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

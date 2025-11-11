@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"fxrates/internal/platform/db"
 	httpserver "fxrates/internal/platform/http"
@@ -56,9 +57,12 @@ func Run() error {
 	defer pool.Close()
 	logrus.Info("✅ Postgres connection successful")
 
-	// Load supported currencies
-	supportedCurrencies, err := loadSupportedCurrencies(startupCtx, pool)
-	if err != nil || len(supportedCurrencies) == 0 {
+	// Load supported currencies codes
+	supportedCodes, err := loadSupportedCodes(startupCtx, pool)
+	if err != nil || len(supportedCodes) == 0 {
+		if err == nil {
+			err = errors.New("no supported currencies available")
+		}
 		logrus.WithError(err).Error("Failed to load supported currencies")
 		return err
 	}
@@ -87,7 +91,7 @@ func Run() error {
 
 	// Services
 	rateService := rate.NewService(rateUpdateRepo, rateRepo)
-	rateValidator := rate.NewValidator(supportedCurrencies)
+	rateValidator := rate.NewValidator(supportedCodes)
 	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient, time.Duration(appCfg.Scheduler.JobDurationSec)*time.Second)
 	// Ensure scheduler stops before DB pool closes
 	defer func() {
@@ -117,8 +121,8 @@ func Run() error {
 	return nil
 }
 
-// loadSupportedCurrencies loads supported currencies from DB
-func loadSupportedCurrencies(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{}, error) {
+// loadSupportedCodes loads supported currencies codes from DB
+func loadSupportedCodes(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{}, error) {
 	rows, err := pool.Query(ctx, `select code from currencies`)
 	if err != nil {
 		return nil, err

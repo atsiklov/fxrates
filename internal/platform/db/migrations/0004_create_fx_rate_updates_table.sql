@@ -5,6 +5,7 @@ create table fx_rate_updates (
     update_id  uuid   unique not null,
     status     text   not null,
     value      numeric(16,8),
+    created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     constraint must_have_value_when_status_applied check ((status = 'applied') = (value is not null))
 );

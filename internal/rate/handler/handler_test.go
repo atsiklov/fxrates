@@ -21,9 +21,15 @@ import (
 
 type MockValidator struct{ mock.Mock }
 
-func (m *MockValidator) ValidatePair(base, quote string) error {
+func (m *MockValidator) ValidateCodes(base, quote string) error {
 	args := m.Called(base, quote)
 	return args.Error(0)
+}
+
+func (m *MockValidator) SupportedCodes() []string {
+	args := m.Called()
+	codes, _ := args.Get(0).([]string)
+	return codes
 }
 
 type MockService struct{ mock.Mock }
@@ -78,7 +84,7 @@ func TestHandler_GetByCodes_ValidationErrors(t *testing.T) {
 			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 			rr := httptest.NewRecorder()
 
-			mockValidator.On("ValidatePair", "USD", "EUR").Return(tc.validatorErr).Once()
+			mockValidator.On("ValidateCodes", "USD", "EUR").Return(tc.validatorErr).Once()
 
 			h.GetByCodes(rr, req)
 
@@ -106,7 +112,7 @@ func TestHandler_GetByCodes_NotFound(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
 
-	mockValidator.On("ValidatePair", "USD", "EUR").Return(nil).Once()
+	mockValidator.On("ValidateCodes", "USD", "EUR").Return(nil).Once()
 	mockService.On("GetByCodes", mock.Anything, "USD", "EUR").Return(rate.View{}, domain.ErrRateNotFound).Once()
 
 	h.GetByCodes(rr, req)
@@ -132,7 +138,7 @@ func TestHandler_GetByCodes_InternalError(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
 
-	mockValidator.On("ValidatePair", "USD", "EUR").Return(nil).Once()
+	mockValidator.On("ValidateCodes", "USD", "EUR").Return(nil).Once()
 	mockService.On("GetByCodes", mock.Anything, "USD", "EUR").Return(rate.View{}, errors.New("boom")).Once()
 
 	h.GetByCodes(rr, req)
@@ -162,7 +168,7 @@ func TestHandler_GetByCodes_Success(t *testing.T) {
 	val := 0.9231
 	view := rate.View{Base: "USD", Quote: "EUR", Value: &val, UpdatedAt: &now}
 
-	mockValidator.On("ValidatePair", "USD", "EUR").Return(nil).Once()
+	mockValidator.On("ValidateCodes", "USD", "EUR").Return(nil).Once()
 	mockService.On("GetByCodes", mock.Anything, "USD", "EUR").Return(view, nil).Once()
 
 	h.GetByCodes(rr, req)
@@ -320,7 +326,7 @@ func TestHandler_ScheduleUpdate_InvalidJSON(t *testing.T) {
 	var ej errorJSON
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &ej))
 	require.Equal(t, "invalid request body", ej.Error)
-	mockValidator.AssertNotCalled(t, "ValidatePair", mock.Anything, mock.Anything)
+	mockValidator.AssertNotCalled(t, "ValidateCodes", mock.Anything, mock.Anything)
 	mockService.AssertNotCalled(t, "ScheduleUpdate", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -339,7 +345,7 @@ func TestHandler_ScheduleUpdate_UnknownField(t *testing.T) {
 	var ej errorJSON
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &ej))
 	require.Equal(t, "invalid request body", ej.Error)
-	mockValidator.AssertNotCalled(t, "ValidatePair", mock.Anything, mock.Anything)
+	mockValidator.AssertNotCalled(t, "ValidateCodes", mock.Anything, mock.Anything)
 	mockService.AssertNotCalled(t, "ScheduleUpdate", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -363,7 +369,7 @@ func TestHandler_ScheduleUpdate_BodyTooLarge(t *testing.T) {
 	var ej errorJSON
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &ej))
 	require.Equal(t, "invalid request body", ej.Error)
-	mockValidator.AssertNotCalled(t, "ValidatePair", mock.Anything, mock.Anything)
+	mockValidator.AssertNotCalled(t, "ValidateCodes", mock.Anything, mock.Anything)
 	mockService.AssertNotCalled(t, "ScheduleUpdate", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -390,7 +396,7 @@ func TestHandler_ScheduleUpdate_ValidationErrors(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/rates/updates", bytes.NewBufferString(body))
 			rr := httptest.NewRecorder()
 
-			mockValidator.On("ValidatePair", "USD", "EUR").Return(tc.validatorErr).Once()
+			mockValidator.On("ValidateCodes", "USD", "EUR").Return(tc.validatorErr).Once()
 
 			h.ScheduleUpdate(rr, req)
 
@@ -413,7 +419,7 @@ func TestHandler_ScheduleUpdate_ServiceError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/rates/updates", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 
-	mockValidator.On("ValidatePair", "USD", "EUR").Return(nil).Once()
+	mockValidator.On("ValidateCodes", "USD", "EUR").Return(nil).Once()
 	mockService.On("ScheduleUpdate", mock.Anything, "USD", "EUR").Return(uuid.Nil, errors.New("failed")).Once()
 
 	h.ScheduleUpdate(rr, req)
@@ -437,7 +443,7 @@ func TestHandler_ScheduleUpdate_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	updateID := uuid.New()
-	mockValidator.On("ValidatePair", "USD", "EUR").Return(nil).Once()
+	mockValidator.On("ValidateCodes", "USD", "EUR").Return(nil).Once()
 	mockService.On("ScheduleUpdate", mock.Anything, "USD", "EUR").Return(updateID, nil).Once()
 
 	h.ScheduleUpdate(rr, req)
@@ -447,6 +453,28 @@ func TestHandler_ScheduleUpdate_Success(t *testing.T) {
 	var res ScheduleUpdateResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &res))
 	require.Equal(t, updateID.String(), res.UpdateID)
+	mockValidator.AssertExpectations(t)
+	mockService.AssertExpectations(t)
+}
+
+func TestHandler_GetSupportedCodes(t *testing.T) {
+	mockValidator := new(MockValidator)
+	mockService := new(MockService)
+	h := NewRateHandler(mockValidator, mockService)
+
+	mockValidator.On("SupportedCodes").Return([]string{"USD", "EUR"}).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/rates/supported-currencies", nil)
+	rr := httptest.NewRecorder()
+
+	h.GetSupportedCodes(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	var resp GetSupportedCodesResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Equal(t, []string{"USD", "EUR"}, resp.Codes)
+
 	mockValidator.AssertExpectations(t)
 	mockService.AssertExpectations(t)
 }

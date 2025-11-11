@@ -10,7 +10,8 @@ import (
 )
 
 type CurrencyValidator interface {
-	ValidatePair(base, quote string) error
+	ValidateCodes(base, quote string) error
+	SupportedCodes() []string
 }
 
 type RateService interface {

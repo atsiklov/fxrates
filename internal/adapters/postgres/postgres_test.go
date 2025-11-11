@@ -19,7 +19,7 @@ import (
 	tcpg "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-const migrationsDir = "../../platform/db/migrations" // немного захардкодил
+const migrationsDir = "../../platform/db/migrations"
 
 var (
 	pgSetupOnce sync.Once

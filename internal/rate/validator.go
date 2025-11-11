@@ -3,11 +3,8 @@ package rate
 import (
 	"errors"
 	"maps"
+	"slices"
 )
-
-type CurrencyValidator struct {
-	supportedCurrencies map[string]struct{} // READ ONLY COPY
-}
 
 var (
 	ErrBaseRequired     = errors.New("base currency is required")
@@ -17,7 +14,12 @@ var (
 	ErrQuoteUnsupported = errors.New("quote currency not supported")
 )
 
-func (v *CurrencyValidator) ValidatePair(base, quote string) error {
+type CurrencyValidator struct {
+	supportedCodesSet map[string]struct{} // read only copy
+	supportedCodesLst []string            // read only copy
+}
+
+func (v *CurrencyValidator) ValidateCodes(base, quote string) error {
 	if base == "" {
 		return ErrBaseRequired
 	}
@@ -27,15 +29,26 @@ func (v *CurrencyValidator) ValidatePair(base, quote string) error {
 	if base == quote {
 		return ErrSameCodes
 	}
-	if _, ok := v.supportedCurrencies[base]; !ok {
+	if _, ok := v.supportedCodesSet[base]; !ok {
 		return ErrBaseUnsupported
 	}
-	if _, ok := v.supportedCurrencies[quote]; !ok {
+	if _, ok := v.supportedCodesSet[quote]; !ok {
 		return ErrQuoteUnsupported
 	}
 	return nil
 }
 
+func (v *CurrencyValidator) SupportedCodes() []string {
+	return slices.Clone(v.supportedCodesLst)
+}
+
 func NewValidator(supportedCurrencies map[string]struct{}) *CurrencyValidator {
-	return &CurrencyValidator{supportedCurrencies: maps.Clone(supportedCurrencies)}
+	codesSet := maps.Clone(supportedCurrencies)
+	codesLst := slices.Collect(maps.Keys(codesSet))
+	slices.Sort(codesLst)
+
+	return &CurrencyValidator{
+		supportedCodesSet: codesSet,
+		supportedCodesLst: codesLst,
+	}
 }
