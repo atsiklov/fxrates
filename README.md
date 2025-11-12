@@ -108,5 +108,4 @@ Swagger UI: <http://localhost:8080/swagger/index.html>
 ---
 
 ## Troubleshooting 💡
-- **UI in docker, backend outside docker** – Vite proxy expects both in the same network. Run both locally or both in docker.
 - **Missing tables** – make sure migrations ran.
