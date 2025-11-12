@@ -47,6 +47,9 @@ cd web/ui
 npm install
 npm run dev
 ```
+**UI example:**
+
+![UI Preview](./web/ui/public/ui.png)
 
 ---
 
