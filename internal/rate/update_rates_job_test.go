@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"sync"
 	"testing"
 
 	"fxrates/internal/domain"
@@ -73,13 +72,16 @@ func TestProcessBase_ErrorFromClient_DoesNotModify(t *testing.T) {
 	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 	}
-	mu := new(sync.Mutex)
-
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(nil, errors.New("timeout")).Once()
 
-	processBase(context.Background(), 1, "USD", mockClient, pairs, mu)
+	updates := make(chan rateUpdate, 1)
+	processBase(context.Background(), 1, "USD", mockClient, pairs, updates)
 
-	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "EUR"}])
+	select {
+	case <-updates:
+		t.Fatal("expected no updates to be emitted")
+	default:
+	}
 	mockClient.AssertExpectations(t)
 }
 
@@ -90,20 +92,24 @@ func TestProcessBase_UpdatesMatchingPairsOnly(t *testing.T) {
 		{Base: "USD", Quote: "PLN"}: -1,
 		{Base: "EUR", Quote: "JPY"}: -1,
 	}
-	mu := new(sync.Mutex)
-
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(map[string]float64{
 		"EUR": 1.2,
 		"PLN": 4.0,
 		"JPY": 150,
 	}, nil).Once()
 
-	processBase(context.Background(), 2, "USD", mockClient, pairs, mu)
+	updates := make(chan rateUpdate, len(pairs))
 
-	require.InDelta(t, 1.2, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 4.0, pairs[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
-	// RatePair with base EUR should not be modified by processing base USD
-	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "EUR", Quote: "JPY"}])
+	processBase(context.Background(), 2, "USD", mockClient, pairs, updates)
+	close(updates)
+
+	results := map[domain.RatePair]float64{}
+	for upd := range updates {
+		results[upd.Pair] = upd.Value
+	}
+	require.InDelta(t, 1.2, results[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 4.0, results[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
+	require.NotContains(t, results, domain.RatePair{Base: "EUR", Quote: "JPY"})
 	mockClient.AssertExpectations(t)
 }
 
@@ -120,21 +126,26 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 		{Base: "USD", Quote: "EUR"}: -1,
 		{Base: "EUR", Quote: "USD"}: -1,
 	}
-	mu := new(sync.Mutex)
 
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(map[string]float64{"EUR": 1.3}, nil).Once()
 	mockClient.On("GetExchangeRates", mock.Anything, "EUR").Return(map[string]float64{"USD": 0.77}, nil).Once()
 
 	done := make(chan struct{})
+	updates := make(chan rateUpdate, 4)
 	go func() {
-		runWorker(context.Background(), 7, queue, mockClient, pairs, mu)
+		runWorker(context.Background(), 7, queue, mockClient, pairs, updates)
 		close(done)
 	}()
 
 	<-done
+	close(updates)
 
-	require.InDelta(t, 1.3, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 0.77, pairs[domain.RatePair{Base: "EUR", Quote: "USD"}], 1e-9)
+	results := make(map[domain.RatePair]float64)
+	for upd := range updates {
+		results[upd.Pair] = upd.Value
+	}
+	require.InDelta(t, 1.3, results[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 0.77, results[domain.RatePair{Base: "EUR", Quote: "USD"}], 1e-9)
 	mockClient.AssertExpectations(t)
 }
 

@@ -1,5 +1,13 @@
 basePath: /api/v1
 definitions:
+  domain.RateUpdateStatus:
+    enum:
+    - pending
+    - applied
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusApplied
   handler.GetByCodesResponse:
     properties:
       base:
@@ -15,7 +23,7 @@ definitions:
         example: 0.9231
         type: number
     type: object
-  handler.GetByUpdateIDResponse:
+  handler.GetByUpdateIDApplied:
     properties:
       base:
         example: USD
@@ -23,6 +31,10 @@ definitions:
       quote:
         example: EUR
         type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/domain.RateUpdateStatus'
+        example: applied
       update_id:
         example: 77b5d9f5-0569-47e3-aee2-f659d59fbd97
         type: string
@@ -32,6 +44,33 @@ definitions:
       value:
         example: 0.9231
         type: number
+    type: object
+  handler.GetByUpdateIDPending:
+    properties:
+      base:
+        example: USD
+        type: string
+      quote:
+        example: EUR
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/domain.RateUpdateStatus'
+        example: pending
+      update_id:
+        example: 77b5d9f5-0569-47e3-aee2-f659d59fbd97
+        type: string
+    type: object
+  handler.GetSupportedCodesResponse:
+    properties:
+      codes:
+        example:
+        - USD
+        - EUR
+        - JPY
+        items:
+          type: string
+        type: array
     type: object
   handler.ScheduleUpdateRequest:
     properties:
@@ -51,7 +90,7 @@ definitions:
   handler.errorResponse:
     properties:
       error:
-        example: rate not found
+        example: something bad happened
         type: string
     type: object
 info:
@@ -98,13 +137,26 @@ paths:
       summary: Get latest rate by codes
       tags:
       - Rates
+  /rates/supported-currencies:
+    get:
+      description: Retrieve all supported currency codes for FX requests
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.GetSupportedCodesResponse'
+      summary: List supported currencies
+      tags:
+      - Rates
   /rates/updates:
     post:
       consumes:
       - application/json
       description: Schedule a rate update for a currency pair
       parameters:
-      - description: Update parameters
+      - description: ApplyUpdates parameters
         in: body
         name: request
         required: true
@@ -141,13 +193,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: rate update applied
           schema:
-            $ref: '#/definitions/handler.GetByUpdateIDResponse'
+            $ref: '#/definitions/handler.GetByUpdateIDApplied'
         "202":
           description: rate update pending
           schema:
-            $ref: '#/definitions/handler.errorResponse'
+            $ref: '#/definitions/handler.GetByUpdateIDPending'
         "404":
           description: Not Found
           schema:

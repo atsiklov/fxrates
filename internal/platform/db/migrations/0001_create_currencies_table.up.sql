@@ -9,5 +9,8 @@ insert into currencies(code) values
 ('EUR'),
 ('MXN'),
 ('GBP'),
-('JPY')
+('JPY'),
+('CHF'),
+('AUD'),
+('CAD')
 on conflict do nothing;

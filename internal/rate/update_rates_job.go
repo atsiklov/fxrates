@@ -12,7 +12,12 @@ import (
 )
 
 const numWorkers = 5
-const perRequestTimeout = 3 * time.Second
+const perRequestTimeout = 5 * time.Second
+
+type rateUpdate struct {
+	Pair  domain.RatePair
+	Value float64
+}
 
 // UpdatePendingRates updates rates in database with values from external API
 func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapters.RateUpdateRepository, rateClient adapters.RateClient, cache adapters.RateUpdateCache) error {
@@ -38,6 +43,7 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapt
 	// }
 	// ! NOTE 1: all the values are set as default -1.0
 	// ! NOTE 2: map doesn't contain reversed pairs (for example if "USD/EUR" presents, then "EUR/USD" will not)
+	// ! NOTE 3: this map is read by multiple threads down below, but updated ONLY BY THE SINGLE MAIN THREAD
 	pairsMap := getUniquePairs(pending)
 
 	// STEP 3: processing pairs in parallel using workers pool
@@ -83,19 +89,25 @@ func processInParallel(ctx context.Context, rateClient adapters.RateClient, pair
 	}
 	close(workQueue)
 
-	// STEP 3: running workers in parallel
+	// STEP 3: running workers in parallel. Each worker puts its results into channel
+	updatesCh := make(chan rateUpdate, len(pairsMap))
+
 	var wg sync.WaitGroup
-	var mu sync.Mutex // Using mutex when updating "pairsMap" concurrently
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			runWorker(ctx, workerID, workQueue, rateClient, pairsMap, &mu)
+			runWorker(ctx, workerID, workQueue, rateClient, pairsMap, updatesCh)
 		}(i)
 	}
 
-	// Waiting for all workers to finish
 	wg.Wait()
+	close(updatesCh)
+
+	// STEP 4: after all workers finished their jobs, update values in pairsMap
+	for upd := range updatesCh {
+		pairsMap[upd.Pair] = upd.Value // key presence checked before passing to channel
+	}
 }
 
 func getUniqueBases(pairsMap map[domain.RatePair]float64) []string {
@@ -111,7 +123,7 @@ func getUniqueBases(pairsMap map[domain.RatePair]float64) []string {
 	return bases
 }
 
-func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, mu *sync.Mutex) {
+func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, updatesCh chan<- rateUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -120,13 +132,13 @@ func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateC
 			if !ok {
 				return
 			}
-			processBase(ctx, workerID, base, rateClient, pairsMap, mu)
+			processBase(ctx, workerID, base, rateClient, pairsMap, updatesCh)
 		}
 	}
 }
 
-// processBase fetches new values from external API and replaces values in pairsMap
-func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, mu *sync.Mutex) {
+// processBase fetches new values from external API and pushes matching pairs to the updates channel
+func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, updatesCh chan<- rateUpdate) {
 	reqCtx, cancel := context.WithTimeout(ctx, perRequestTimeout)
 	defer cancel()
 	// STEP 1: make external API request
@@ -143,17 +155,14 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 		return
 	}
 
-	// STEP 2: concurrently updating values (which are currently default -1.0) in pairsMap
-	// ---
-	// Basically "base" is fixed, so we iterate over ratesMap and on each iteration we create RatePair
-	// and check if it presents in pairsMap. If it does, we lock map and replace value
+	// STEP 2: iterating over ratesMap from response, find all pairs that present in pairsMap and put them into channel with updated values
+	// NOTE 1 !!! to avoid confusion:
+	// - ratesMap is what we get from API response
+	// - pairsMap is our map where we store pairs and their values
 	for quote, v := range ratesMap {
 		p := domain.RatePair{Base: base, Quote: quote}
 		if _, ok := pairsMap[p]; ok {
-			// now we lock the entire map, but as a further improvement can switch to just locking a bucket
-			mu.Lock()
-			pairsMap[p] = v
-			mu.Unlock()
+			updatesCh <- rateUpdate{Pair: p, Value: v}
 		}
 	}
 }

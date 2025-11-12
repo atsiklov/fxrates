@@ -38,16 +38,8 @@ function App() {
 
   const [updates, setUpdates] = useState<UpdateRow[]>([])
   const [isScheduling, setIsScheduling] = useState(false)
-  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null)
+  const [pendingPopupVisible, setPendingPopupVisible] = useState(false)
   const [checkPopupId, setCheckPopupId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!duplicateNotice) {
-      return
-    }
-    const timer = window.setTimeout(() => setDuplicateNotice(null), 1800)
-    return () => window.clearTimeout(timer)
-  }, [duplicateNotice])
 
   useEffect(() => {
     if (!checkPopupId) {
@@ -56,6 +48,14 @@ function App() {
     const timer = window.setTimeout(() => setCheckPopupId(null), 400)
     return () => window.clearTimeout(timer)
   }, [checkPopupId])
+
+  useEffect(() => {
+    if (!pendingPopupVisible) {
+      return
+    }
+    const timer = window.setTimeout(() => setPendingPopupVisible(false), 800)
+    return () => window.clearTimeout(timer)
+  }, [pendingPopupVisible])
 
   useEffect(() => {
     const load = async () => {
@@ -108,23 +108,36 @@ function App() {
     setActionError(null)
     try {
       const { updateId } = await scheduleRateUpdate(baseCode, quoteCode)
-      let isDuplicate = false
-      const newRow: UpdateRow = {
-        updateId,
-        base: baseCode,
-        quote: quoteCode,
-        status: 'pending',
-        requestedAt: new Date().toISOString(),
-      }
+      const existedBefore = updates.some((item) => item.updateId === updateId)
+      const latest = await fetchRateUpdate(updateId)
+
       setUpdates((prev) => {
-        if (prev.some((item) => item.updateId === updateId)) {
-          isDuplicate = true
-          return prev
+        if (existedBefore) {
+          return prev.map((item) =>
+            item.updateId === updateId
+              ? {
+                  ...item,
+                  status: latest.status,
+                  value: latest.value ?? item.value,
+                  updatedAt: latest.updatedAt ?? item.updatedAt,
+                }
+              : item,
+          )
         }
-        return [newRow, ...prev]
+        const nextRow: UpdateRow = {
+          updateId,
+          base: latest.base || baseCode,
+          quote: latest.quote || quoteCode,
+          status: latest.status,
+          requestedAt: new Date().toISOString(),
+          value: latest.value,
+          updatedAt: latest.updatedAt,
+        }
+        return [nextRow, ...prev]
       })
-      if (isDuplicate) {
-        setDuplicateNotice('This update was already requested')
+
+      if (existedBefore && latest.status === 'pending') {
+        setPendingPopupVisible(true)
         return
       }
     } catch (err) {
@@ -176,7 +189,6 @@ function App() {
     <main className="app">
       <h1>FX Rates</h1>
       <form className="controls" onSubmit={handleScheduleUpdate}>
-        {duplicateNotice && <div className="inline-popup">{duplicateNotice}</div>}
         <div className="control-row">
           <label>
             Base currency
@@ -206,11 +218,12 @@ function App() {
               onClick={handleGetLatest}
               disabled={disableActions || isRateLoading}
             >
-              {isRateLoading ? 'Loading…' : 'Get latest rate'}
+              {isRateLoading ? 'Loading...' : 'Get latest rate'}
             </button>
             <button type="submit" className="btn-primary action-btn" disabled={disableActions || isScheduling}>
-              {isScheduling ? 'Scheduling…' : 'Update rate'}
+              {isScheduling ? 'Scheduling...' : 'Update rate'}
             </button>
+            {pendingPopupVisible && <div className="button-popup">Still pending</div>}
           </div>
         </div>
       </form>

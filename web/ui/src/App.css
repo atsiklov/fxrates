@@ -100,6 +100,7 @@ select {
     gap: 0.5rem;
     flex-wrap: wrap;
     justify-content: flex-end;
+    position: relative;
 }
 
 /* Buttons */
@@ -266,10 +267,17 @@ th {
     transform: translate(-50%, -0.4rem);
     background: #4a4a4a;
 }
-.inline-popup {
+.button-popup {
+    position: absolute;
     right: 0;
-    top: -0.7rem;
-    transform: translateY(-100%);
+    bottom: calc(100% + 0.4rem);
+    background: #4a4a4a;
+    color: var(--accent-contrast);
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
 }
 
 @keyframes spin {

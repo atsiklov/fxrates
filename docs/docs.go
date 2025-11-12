@@ -15,6 +15,26 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/rates/supported-currencies": {
+            "get": {
+                "description": "Retrieve all supported currency codes for FX requests",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rates"
+                ],
+                "summary": "List supported currencies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.GetSupportedCodesResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/rates/updates": {
             "post": {
                 "description": "Schedule a rate update for a currency pair",
@@ -30,7 +50,7 @@ const docTemplate = `{
                 "summary": "Schedule rate update",
                 "parameters": [
                     {
-                        "description": "Update parameters",
+                        "description": "ApplyUpdates parameters",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -82,15 +102,15 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "rate update applied",
                         "schema": {
-                            "$ref": "#/definitions/handler.GetByUpdateIDResponse"
+                            "$ref": "#/definitions/handler.GetByUpdateIDApplied"
                         }
                     },
                     "202": {
                         "description": "rate update pending",
                         "schema": {
-                            "$ref": "#/definitions/handler.errorResponse"
+                            "$ref": "#/definitions/handler.GetByUpdateIDPending"
                         }
                     },
                     "404": {
@@ -166,6 +186,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "domain.RateUpdateStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "applied"
+            ],
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusApplied"
+            ]
+        },
         "handler.GetByCodesResponse": {
             "type": "object",
             "properties": {
@@ -187,7 +218,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.GetByUpdateIDResponse": {
+        "handler.GetByUpdateIDApplied": {
             "type": "object",
             "properties": {
                 "base": {
@@ -197,6 +228,14 @@ const docTemplate = `{
                 "quote": {
                     "type": "string",
                     "example": "EUR"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.RateUpdateStatus"
+                        }
+                    ],
+                    "example": "applied"
                 },
                 "update_id": {
                     "type": "string",
@@ -209,6 +248,47 @@ const docTemplate = `{
                 "value": {
                     "type": "number",
                     "example": 0.9231
+                }
+            }
+        },
+        "handler.GetByUpdateIDPending": {
+            "type": "object",
+            "properties": {
+                "base": {
+                    "type": "string",
+                    "example": "USD"
+                },
+                "quote": {
+                    "type": "string",
+                    "example": "EUR"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.RateUpdateStatus"
+                        }
+                    ],
+                    "example": "pending"
+                },
+                "update_id": {
+                    "type": "string",
+                    "example": "77b5d9f5-0569-47e3-aee2-f659d59fbd97"
+                }
+            }
+        },
+        "handler.GetSupportedCodesResponse": {
+            "type": "object",
+            "properties": {
+                "codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "USD",
+                        "EUR",
+                        "JPY"
+                    ]
                 }
             }
         },
@@ -239,7 +319,7 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string",
-                    "example": "rate not found"
+                    "example": "something bad happened"
                 }
             }
         }
