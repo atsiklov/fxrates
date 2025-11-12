@@ -10,6 +10,7 @@ import (
 	"fxrates/internal/domain"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -35,10 +36,10 @@ func TestGetUniquePairs_SkipsReversedAndSetsDefaults(t *testing.T) {
 	pairs := getUniquePairs(pending)
 
 	require.Len(t, pairs, 3)
-	_, hasUSDEUR := pairs[pair{Base: "USD", Quote: "EUR"}]
-	_, hasUSDMXN := pairs[pair{Base: "USD", Quote: "MXN"}]
-	_, hasMXNEUR := pairs[pair{Base: "MXN", Quote: "EUR"}]
-	_, hasEURUSD := pairs[pair{Base: "EUR", Quote: "USD"}]
+	_, hasUSDEUR := pairs[domain.RatePair{Base: "USD", Quote: "EUR"}]
+	_, hasUSDMXN := pairs[domain.RatePair{Base: "USD", Quote: "MXN"}]
+	_, hasMXNEUR := pairs[domain.RatePair{Base: "MXN", Quote: "EUR"}]
+	_, hasEURUSD := pairs[domain.RatePair{Base: "EUR", Quote: "USD"}]
 
 	require.True(t, hasUSDEUR)
 	require.True(t, hasUSDMXN)
@@ -46,15 +47,15 @@ func TestGetUniquePairs_SkipsReversedAndSetsDefaults(t *testing.T) {
 	require.False(t, hasEURUSD)
 
 	// values are initialized to -1
-	require.Equal(t, float64(-1), pairs[pair{Base: "USD", Quote: "EUR"}])
-	require.Equal(t, float64(-1), pairs[pair{Base: "USD", Quote: "MXN"}])
-	require.Equal(t, float64(-1), pairs[pair{Base: "MXN", Quote: "EUR"}])
+	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "EUR"}])
+	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "MXN"}])
+	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "MXN", Quote: "EUR"}])
 }
 
 // --- getUniqueBases ---
 
 func TestGetUniqueBases_CollectsUnique(t *testing.T) {
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 		{Base: "USD", Quote: "PLN"}: -1,
 		{Base: "EUR", Quote: "GBP"}: -1,
@@ -69,7 +70,7 @@ func TestGetUniqueBases_CollectsUnique(t *testing.T) {
 
 func TestProcessBase_ErrorFromClient_DoesNotModify(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 	}
 	mu := new(sync.Mutex)
@@ -78,13 +79,13 @@ func TestProcessBase_ErrorFromClient_DoesNotModify(t *testing.T) {
 
 	processBase(context.Background(), 1, "USD", mockClient, pairs, mu)
 
-	require.Equal(t, float64(-1), pairs[pair{Base: "USD", Quote: "EUR"}])
+	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "EUR"}])
 	mockClient.AssertExpectations(t)
 }
 
 func TestProcessBase_UpdatesMatchingPairsOnly(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 		{Base: "USD", Quote: "PLN"}: -1,
 		{Base: "EUR", Quote: "JPY"}: -1,
@@ -99,10 +100,10 @@ func TestProcessBase_UpdatesMatchingPairsOnly(t *testing.T) {
 
 	processBase(context.Background(), 2, "USD", mockClient, pairs, mu)
 
-	require.InDelta(t, 1.2, pairs[pair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 4.0, pairs[pair{Base: "USD", Quote: "PLN"}], 1e-9)
-	// pair with base EUR should not be modified by processing base USD
-	require.Equal(t, float64(-1), pairs[pair{Base: "EUR", Quote: "JPY"}])
+	require.InDelta(t, 1.2, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 4.0, pairs[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
+	// RatePair with base EUR should not be modified by processing base USD
+	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "EUR", Quote: "JPY"}])
 	mockClient.AssertExpectations(t)
 }
 
@@ -115,7 +116,7 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 	queue <- "EUR"
 	close(queue)
 
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 		{Base: "EUR", Quote: "USD"}: -1,
 	}
@@ -132,8 +133,8 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 
 	<-done
 
-	require.InDelta(t, 1.3, pairs[pair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 0.77, pairs[pair{Base: "EUR", Quote: "USD"}], 1e-9)
+	require.InDelta(t, 1.3, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 0.77, pairs[domain.RatePair{Base: "EUR", Quote: "USD"}], 1e-9)
 	mockClient.AssertExpectations(t)
 }
 
@@ -141,7 +142,7 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 
 func TestProcessInParallel_UpdatesAllBases(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: -1,
 		{Base: "USD", Quote: "PLN"}: -1,
 		{Base: "EUR", Quote: "GBP"}: -1,
@@ -152,9 +153,9 @@ func TestProcessInParallel_UpdatesAllBases(t *testing.T) {
 
 	processInParallel(context.Background(), mockClient, pairs)
 
-	require.InDelta(t, 1.11, pairs[pair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 3.99, pairs[pair{Base: "USD", Quote: "PLN"}], 1e-9)
-	require.InDelta(t, 0.86, pairs[pair{Base: "EUR", Quote: "GBP"}], 1e-9)
+	require.InDelta(t, 1.11, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 3.99, pairs[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
+	require.InDelta(t, 0.86, pairs[domain.RatePair{Base: "EUR", Quote: "GBP"}], 1e-9)
 	mockClient.AssertExpectations(t)
 }
 
@@ -162,13 +163,14 @@ func TestProcessInParallel_UpdatesAllBases(t *testing.T) {
 
 func TestDoUpdateRates_AppliesDirectAndReversedAndSkipsMissing(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
+	cacheMock := new(MockRateUpdateCache)
 	pending := []domain.PendingRateUpdate{
 		{UpdateID: uuid.New(), PairID: 1, Base: "USD", Quote: "EUR"}, // direct present
 		{UpdateID: uuid.New(), PairID: 2, Base: "EUR", Quote: "PLN"}, // reversed present via PLN/EUR
 		{UpdateID: uuid.New(), PairID: 3, Base: "GBP", Quote: "JPY"}, // missing -> skip
 		{UpdateID: uuid.New(), PairID: 4, Base: "AUD", Quote: "NZD"}, // non-positive -> skip
 	}
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: 0.9,  // direct
 		{Base: "PLN", Quote: "EUR"}: 4.0,  // reversed available => 1/4.0
 		{Base: "AUD", Quote: "NZD"}: -1.0, // non-positive
@@ -178,55 +180,68 @@ func TestDoUpdateRates_AppliesDirectAndReversedAndSkipsMissing(t *testing.T) {
 		On("ApplyUpdates", mock.Anything, mock.Anything).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			applied, ok := args.Get(1).([]domain.AppliedRateUpdate) // чекаем аргументы мока
+			applied, ok := args.Get(1).([]domain.AppliedRateUpdate)
 			require.True(t, ok)
 			require.Len(t, applied, 2)
 
-			require.InDelta(t, 0.9, applied[0].Value, 1e-9)     // для пары USD/EUR
-			require.InDelta(t, 1.0/4.0, applied[1].Value, 1e-9) // для пары EUR/PLN, которую ревёрснули и нашли в pairs
+			require.InDelta(t, 0.9, applied[0].Value, 1e-9)
+			require.InDelta(t, 1.0/4.0, applied[1].Value, 1e-9)
 		}).Once()
 
-	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo)
+	expectedPairs := []domain.RatePair{
+		{Base: "USD", Quote: "EUR"},
+		{Base: "EUR", Quote: "PLN"},
+	}
+	cacheMock.On("CleanBatch", mock.MatchedBy(func(pairs []domain.RatePair) bool {
+		return assert.ElementsMatch(t, expectedPairs, pairs)
+	})).Return().Once()
+
+	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 	mockUpdatesRepo.AssertExpectations(t)
+	cacheMock.AssertExpectations(t)
 }
 
-func TestDoUpdateRates_NoApplicableUpdates_DoesNotCallRepo(t *testing.T) {
+func TestDoUpdateRates_NoApplicableUpdates_DoesNotCallRepoAndDoesNotCleanCache(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
+	cacheMock := new(MockRateUpdateCache)
 	pending := []domain.PendingRateUpdate{
 		{UpdateID: uuid.New(), PairID: 10, Base: "USD", Quote: "EUR"},
 	}
-	pairs := map[pair]float64{
-		{Base: "USD", Quote: "EUR"}: -1, // not usable
+	pairs := map[domain.RatePair]float64{
+		{Base: "USD", Quote: "EUR"}: -1,
 	}
 
-	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo)
+	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
 
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
 	mockUpdatesRepo.AssertNotCalled(t, "ApplyUpdates", mock.Anything, mock.Anything)
+	cacheMock.AssertNotCalled(t, "CleanBatch", mock.Anything)
 }
 
 func TestDoUpdateRates_ApplyUpdatesError_Propagates(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
+	cacheMock := new(MockRateUpdateCache)
 	pending := []domain.PendingRateUpdate{
 		{UpdateID: uuid.New(), PairID: 5, Base: "USD", Quote: "EUR"},
 	}
-	pairs := map[pair]float64{
+	pairs := map[domain.RatePair]float64{
 		{Base: "USD", Quote: "EUR"}: 1.01,
 	}
 	wantErr := errors.New("db fail")
 
 	mockUpdatesRepo.On("ApplyUpdates", mock.Anything, mock.Anything).Return(wantErr).Once()
 
-	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo)
+	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to update rates")
 	require.Equal(t, 0, count)
 	mockUpdatesRepo.AssertExpectations(t)
+	cacheMock.AssertNotCalled(t, "CleanBatch", mock.Anything)
 }
 
 // --- UpdatePendingRates ---
@@ -234,35 +249,40 @@ func TestDoUpdateRates_ApplyUpdatesError_Propagates(t *testing.T) {
 func TestUpdatePendingRates_GetPendingError(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockClient := new(MockRateClient)
+	cacheMock := new(MockRateUpdateCache)
 	wantErr := errors.New("db unavailable")
 
 	mockUpdatesRepo.On("GetPending", mock.Anything).Return(nil, wantErr).Once()
 
-	err := UpdatePendingRates(context.Background(), "exec-1", mockUpdatesRepo, mockClient)
+	err := UpdatePendingRates(context.Background(), "exec-1", mockUpdatesRepo, mockClient, cacheMock)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to get pending rates")
 	mockUpdatesRepo.AssertExpectations(t)
 	mockClient.AssertExpectations(t)
+	cacheMock.AssertNotCalled(t, "CleanBatch", mock.Anything)
 }
 
 func TestUpdatePendingRates_NoPending(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockClient := new(MockRateClient)
+	cacheMock := new(MockRateUpdateCache)
 
 	mockUpdatesRepo.On("GetPending", mock.Anything).Return([]domain.PendingRateUpdate{}, nil).Once()
 
-	err := UpdatePendingRates(context.Background(), "exec-2", mockUpdatesRepo, mockClient)
+	err := UpdatePendingRates(context.Background(), "exec-2", mockUpdatesRepo, mockClient, cacheMock)
 
 	require.NoError(t, err)
 	mockUpdatesRepo.AssertExpectations(t)
 	mockUpdatesRepo.AssertNotCalled(t, "ApplyUpdates", mock.Anything, mock.Anything)
 	mockClient.AssertExpectations(t)
+	cacheMock.AssertNotCalled(t, "CleanBatch", mock.Anything)
 }
 
 func TestUpdatePendingRates_Success_AppliesValues(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockClient := new(MockRateClient)
+	cacheMock := new(MockRateUpdateCache)
 
 	p1 := domain.PendingRateUpdate{UpdateID: uuid.New(), PairID: 1, Base: "USD", Quote: "EUR"}
 	p2 := domain.PendingRateUpdate{UpdateID: uuid.New(), PairID: 2, Base: "EUR", Quote: "PLN"}
@@ -284,16 +304,55 @@ func TestUpdatePendingRates_Success_AppliesValues(t *testing.T) {
 		require.InDelta(t, 4.56, updates[1].Value, 1e-9)
 	}).Once()
 
-	err := UpdatePendingRates(context.Background(), "exec-3", mockUpdatesRepo, mockClient)
+	expectedPairs := []domain.RatePair{
+		{Base: "USD", Quote: "EUR"},
+		{Base: "EUR", Quote: "PLN"},
+	}
+	cacheMock.On("CleanBatch", mock.MatchedBy(func(pairs []domain.RatePair) bool {
+		return assert.ElementsMatch(t, expectedPairs, pairs)
+	})).Return().Once()
+
+	err := UpdatePendingRates(context.Background(), "exec-3", mockUpdatesRepo, mockClient, cacheMock)
 
 	require.NoError(t, err)
 	mockUpdatesRepo.AssertExpectations(t)
 	mockClient.AssertExpectations(t)
+	cacheMock.AssertExpectations(t)
+}
+
+func TestDoUpdateRates_CleansCacheForUpdatedPairs(t *testing.T) {
+	mockUpdatesRepo := new(MockRateUpdateRepository)
+	cacheMock := new(MockRateUpdateCache)
+
+	pending := []domain.PendingRateUpdate{
+		{UpdateID: uuid.New(), PairID: 1, Base: "USD", Quote: "EUR"},
+		{UpdateID: uuid.New(), PairID: 2, Base: "EUR", Quote: "USD"},
+	}
+	pairs := map[domain.RatePair]float64{
+		{Base: "USD", Quote: "EUR"}: 1.2,
+	}
+
+	mockUpdatesRepo.On("ApplyUpdates", mock.Anything, mock.Anything).Return(nil).Once()
+	expectedPairs := []domain.RatePair{
+		{Base: "USD", Quote: "EUR"},
+		{Base: "EUR", Quote: "USD"},
+	}
+	cacheMock.On("CleanBatch", mock.MatchedBy(func(pairs []domain.RatePair) bool {
+		return assert.ElementsMatch(t, expectedPairs, pairs)
+	})).Return().Once()
+
+	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	mockUpdatesRepo.AssertExpectations(t)
+	cacheMock.AssertExpectations(t)
 }
 
 func TestUpdatePendingRates_ApplyUpdatesError_Propagates(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockClient := new(MockRateClient)
+	cacheMock := new(MockRateUpdateCache)
 
 	p1 := domain.PendingRateUpdate{UpdateID: uuid.New(), PairID: 1, Base: "USD", Quote: "EUR"}
 	mockUpdatesRepo.On("GetPending", mock.Anything).Return([]domain.PendingRateUpdate{p1}, nil).Once()
@@ -303,10 +362,11 @@ func TestUpdatePendingRates_ApplyUpdatesError_Propagates(t *testing.T) {
 	wantErr := errors.New("apply failed")
 	mockUpdatesRepo.On("ApplyUpdates", mock.Anything, mock.Anything).Return(wantErr).Once()
 
-	err := UpdatePendingRates(context.Background(), "exec-4", mockUpdatesRepo, mockClient)
+	err := UpdatePendingRates(context.Background(), "exec-4", mockUpdatesRepo, mockClient, cacheMock)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to update rates")
 	mockUpdatesRepo.AssertExpectations(t)
 	mockClient.AssertExpectations(t)
+	cacheMock.AssertNotCalled(t, "CleanBatch", mock.Anything)
 }

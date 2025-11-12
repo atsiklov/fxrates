@@ -12,10 +12,22 @@ import (
 type Service struct {
 	rateUpdatesRepo adapters.RateUpdateRepository
 	rateRepo        adapters.RateRepository
+	cache           adapters.RateUpdateCache
 }
 
 func (s *Service) ScheduleUpdate(ctx context.Context, base string, quote string) (uuid.UUID, error) {
-	return s.rateUpdatesRepo.ScheduleNewOrGetExisting(ctx, base, quote)
+	pair := domain.RatePair{Base: base, Quote: quote}
+	if cachedID, ok := s.cache.Get(pair); ok {
+		return cachedID, nil
+	}
+
+	updateID, err := s.rateUpdatesRepo.ScheduleNewOrGetExisting(ctx, base, quote)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	s.cache.Set(pair, updateID)
+	return updateID, nil
 }
 
 func (s *Service) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (View, error) {
@@ -51,6 +63,10 @@ func (s *Service) GetByCodes(ctx context.Context, base string, quote string) (Vi
 	return View{Base: rate.Base, Quote: rate.Quote, Value: &rate.Value, UpdatedAt: &rate.UpdatedAt}, nil
 }
 
-func NewService(rateUpdatesRepo adapters.RateUpdateRepository, rateRepo adapters.RateRepository) *Service {
-	return &Service{rateUpdatesRepo: rateUpdatesRepo, rateRepo: rateRepo}
+func NewService(rateUpdatesRepo adapters.RateUpdateRepository, rateRepo adapters.RateRepository, cache adapters.RateUpdateCache) *Service {
+	return &Service{
+		rateUpdatesRepo: rateUpdatesRepo,
+		rateRepo:        rateRepo,
+		cache:           cache,
+	}
 }

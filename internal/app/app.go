@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"fxrates/internal/adapters/cache"
 	"fxrates/internal/adapters/httpclient"
 	"fxrates/internal/adapters/postgres"
 	"fxrates/internal/api"
@@ -67,7 +68,7 @@ func Run() error {
 		return err
 	}
 
-	// Base HTTP client (configurable timeout)
+	// Base HTTP client
 	httpTimeout := time.Duration(appCfg.HTTPClient.TimeoutSeconds) * time.Second
 	if httpTimeout <= 0 {
 		httpTimeout = 10 * time.Second
@@ -88,10 +89,17 @@ func Run() error {
 	rateUpdateRepo := postgres.NewRateUpdateRepository(pool)
 	rateRepo := postgres.NewRateRepository(pool)
 
+	// Cache
+	rateUpdateCache, err := cache.NewRateUpdateCache(appCfg.Cache.RateUpdatesMaxItems)
+	if err != nil {
+		return fmt.Errorf("failed to init rate update cache: %w", err)
+	}
+	defer rateUpdateCache.Close()
+
 	// Services
-	rateService := rate.NewService(rateUpdateRepo, rateRepo)
+	rateService := rate.NewService(rateUpdateRepo, rateRepo, rateUpdateCache)
 	rateValidator := rate.NewValidator(supportedCodes)
-	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient, time.Duration(appCfg.Scheduler.JobDurationSec)*time.Second)
+	scheduler := rate.NewScheduler(rateUpdateRepo, rateClient, rateUpdateCache, time.Duration(appCfg.Scheduler.UpdateRatesJobDurationSec)*time.Second)
 	// Ensure scheduler stops before DB pool closes
 	defer func() {
 		if shutDownErr := scheduler.Shutdown(); shutDownErr != nil {

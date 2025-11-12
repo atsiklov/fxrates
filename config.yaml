@@ -20,4 +20,7 @@ exchange_rate_api:
   api_key: ""
 
 scheduler:
-  job_duration_sec: 30
+  update_rates_job_duration_sec: 30
+
+cache:
+  rate_updates_max_items: 512

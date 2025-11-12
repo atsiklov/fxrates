@@ -21,3 +21,9 @@ type RateUpdateRepository interface {
 	GetPending(ctx context.Context) ([]domain.PendingRateUpdate, error)
 	ApplyUpdates(ctx context.Context, rates []domain.AppliedRateUpdate) error
 }
+
+type RateUpdateCache interface {
+	Get(pair domain.RatePair) (uuid.UUID, bool)
+	Set(pair domain.RatePair, updateID uuid.UUID)
+	CleanBatch(pairs []domain.RatePair)
+}

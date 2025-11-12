@@ -49,17 +49,37 @@ func (m *MockRateRepository) GetByUpdateID(ctx context.Context, updateID uuid.UU
 	return r, status, args.Error(2)
 }
 
+type MockRateUpdateCache struct{ mock.Mock }
+
+func (m *MockRateUpdateCache) Get(pair domain.RatePair) (uuid.UUID, bool) {
+	args := m.Called(pair)
+	id, _ := args.Get(0).(uuid.UUID)
+	return id, args.Bool(1)
+}
+
+func (m *MockRateUpdateCache) Set(pair domain.RatePair, updateID uuid.UUID) {
+	m.Called(pair, updateID)
+}
+
+func (m *MockRateUpdateCache) CleanBatch(pairs []domain.RatePair) {
+	m.Called(pairs)
+}
+
 // --- ScheduleUpdate ---
 
 func TestService_ScheduleUpdate_Success(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	mockCache := new(MockRateUpdateCache)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, mockCache)
 
 	ctx := context.Background()
 	updateID := uuid.New()
+	pair := domain.RatePair{Base: "USD", Quote: "EUR"}
 
+	mockCache.On("Get", pair).Return(uuid.Nil, false).Once()
 	mockUpdatesRepo.On("ScheduleNewOrGetExisting", mock.Anything, "USD", "EUR").Return(updateID, nil).Once()
+	mockCache.On("Set", pair, updateID).Return().Once()
 
 	id, err := svc.ScheduleUpdate(ctx, "USD", "EUR")
 
@@ -67,16 +87,20 @@ func TestService_ScheduleUpdate_Success(t *testing.T) {
 	require.Equal(t, updateID, id)
 	mockUpdatesRepo.AssertExpectations(t)
 	mockRateRepo.AssertExpectations(t)
+	mockCache.AssertExpectations(t)
 }
 
 func TestService_ScheduleUpdate_Error(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	mockCache := new(MockRateUpdateCache)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, mockCache)
 
 	ctx := context.Background()
 	wantErr := errors.New("db temporarily unavailable")
+	pair := domain.RatePair{Base: "USD", Quote: "EUR"}
 
+	mockCache.On("Get", pair).Return(uuid.Nil, false).Once()
 	mockUpdatesRepo.On("ScheduleNewOrGetExisting", mock.Anything, "USD", "EUR").Return(uuid.Nil, wantErr).Once()
 
 	id, err := svc.ScheduleUpdate(ctx, "USD", "EUR")
@@ -86,6 +110,27 @@ func TestService_ScheduleUpdate_Error(t *testing.T) {
 	require.Equal(t, wantErr, err)
 	mockUpdatesRepo.AssertExpectations(t)
 	mockRateRepo.AssertExpectations(t)
+	mockCache.AssertExpectations(t)
+}
+
+func TestService_ScheduleUpdate_UsesCacheHit(t *testing.T) {
+	mockUpdatesRepo := new(MockRateUpdateRepository)
+	mockRateRepo := new(MockRateRepository)
+	mockCache := new(MockRateUpdateCache)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, mockCache)
+
+	ctx := context.Background()
+	updateID := uuid.New()
+	pair := domain.RatePair{Base: "USD", Quote: "EUR"}
+
+	mockCache.On("Get", pair).Return(updateID, true).Once()
+
+	id, err := svc.ScheduleUpdate(ctx, "USD", "EUR")
+
+	require.NoError(t, err)
+	require.Equal(t, updateID, id)
+	mockUpdatesRepo.AssertNotCalled(t, "ScheduleNewOrGetExisting", mock.Anything, mock.Anything, mock.Anything)
+	mockCache.AssertNotCalled(t, "Set", mock.Anything, mock.Anything)
 }
 
 // --- GetByUpdateID ---
@@ -93,7 +138,7 @@ func TestService_ScheduleUpdate_Error(t *testing.T) {
 func TestService_GetByUpdateID_StatusApplied(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	updateID := uuid.New()
@@ -119,7 +164,7 @@ func TestService_GetByUpdateID_StatusApplied(t *testing.T) {
 func TestService_GetByUpdateID_StatusPending(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	updateID := uuid.New()
@@ -142,7 +187,7 @@ func TestService_GetByUpdateID_StatusPending(t *testing.T) {
 func TestService_GetByUpdateID_UnknownStatus(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	updateID := uuid.New()
@@ -162,7 +207,7 @@ func TestService_GetByUpdateID_UnknownStatus(t *testing.T) {
 func TestService_GetByUpdateID_RepoError(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	updateID := uuid.New()
@@ -183,7 +228,7 @@ func TestService_GetByUpdateID_RepoError(t *testing.T) {
 func TestService_GetByCodes_Success(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	fixedTime := time.Date(2024, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -207,7 +252,7 @@ func TestService_GetByCodes_Success(t *testing.T) {
 func TestService_GetByCodes_Error(t *testing.T) {
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	mockRateRepo := new(MockRateRepository)
-	svc := NewService(mockUpdatesRepo, mockRateRepo)
+	svc := NewService(mockUpdatesRepo, mockRateRepo, nil)
 
 	ctx := context.Background()
 	wantErr := domain.ErrRateNotFound

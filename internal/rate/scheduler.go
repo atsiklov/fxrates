@@ -11,11 +11,12 @@ import (
 )
 
 type Scheduler struct {
-	rateUpdatesRepo adapters.RateUpdateRepository
-	rateClient      adapters.RateClient
+	rateUpdateRepo adapters.RateUpdateRepository
+	rateClient     adapters.RateClient
+	cache          adapters.RateUpdateCache
 	// -----
-	sched       gocron.Scheduler
-	jobDuration time.Duration
+	sched                  gocron.Scheduler
+	updateRatesJobDuration time.Duration
 }
 
 func (s *Scheduler) Start(ctx context.Context) error {
@@ -27,14 +28,14 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 	job := func(jobCtx context.Context) {
 		execID := uuid.NewString()
-		updErr := UpdatePendingRates(jobCtx, execID, s.rateUpdatesRepo, s.rateClient)
+		updErr := UpdatePendingRates(jobCtx, execID, s.rateUpdateRepo, s.rateClient, s.cache)
 		if updErr != nil {
 			logrus.Errorf("ApplyUpdates pending rates job %s failed: %v", execID, updErr)
 		}
 	}
 
 	_, err = scheduler.NewJob(
-		gocron.DurationJob(s.jobDuration),
+		gocron.DurationJob(s.updateRatesJobDuration),
 		gocron.NewTask(job),
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	)
@@ -49,7 +50,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
 		if sdErr := s.Shutdown(); sdErr != nil {
-			logrus.Errorf("Scheduler shutdown error: %v", sdErr)
+			logrus.Errorf("scheduler shutdown error: %v", sdErr)
 		}
 	}()
 	return nil
@@ -64,9 +65,19 @@ func (s *Scheduler) Shutdown() error {
 	return err
 }
 
-func NewScheduler(rateUpdatesRepo adapters.RateUpdateRepository, rateClient adapters.RateClient, jobDuration time.Duration) *Scheduler {
-	if jobDuration <= 0 {
-		jobDuration = 30 * time.Second
+func NewScheduler(
+	rateUpdatesRepo adapters.RateUpdateRepository,
+	rateClient adapters.RateClient,
+	cache adapters.RateUpdateCache,
+	updateRatesJobDuration time.Duration,
+) *Scheduler {
+	if updateRatesJobDuration <= 0 {
+		updateRatesJobDuration = 30 * time.Second
 	}
-	return &Scheduler{rateUpdatesRepo: rateUpdatesRepo, rateClient: rateClient, jobDuration: jobDuration}
+	return &Scheduler{
+		rateUpdateRepo:         rateUpdatesRepo,
+		rateClient:             rateClient,
+		cache:                  cache,
+		updateRatesJobDuration: updateRatesJobDuration,
+	}
 }

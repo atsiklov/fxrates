@@ -35,6 +35,7 @@ type AppConfig struct {
 	ExchangeRateAPI ExchangeRateAPI `mapstructure:"exchange_rate_api"`
 	Logging         Logging         `mapstructure:"logging"`
 	Scheduler       Scheduler       `mapstructure:"scheduler"`
+	Cache           Cache           `mapstructure:"cache"`
 }
 
 type HTTPClient struct {
@@ -51,7 +52,11 @@ type ExchangeRateAPI struct {
 }
 
 type Scheduler struct {
-	JobDurationSec int `mapstructure:"job_duration_sec"`
+	UpdateRatesJobDurationSec int `mapstructure:"update_rates_job_duration_sec"`
+}
+
+type Cache struct {
+	RateUpdatesMaxItems int64 `mapstructure:"rate_updates_max_items"`
 }
 
 func Init() (*AppConfig, error) {
@@ -89,7 +94,9 @@ func Init() (*AppConfig, error) {
 	_ = viper.BindEnv("exchange_rate_api.api_key", "EXCHANGE_RATE_API_KEY")
 
 	// scheduler env vars
-	_ = viper.BindEnv("scheduler.job_duration_sec", "JOB_DURATION_SEC")
+	_ = viper.BindEnv("scheduler.update_rates_job_duration_sec", "UPDATE_RATES_JOB_DURATION_SEC")
+	// cache env vars
+	_ = viper.BindEnv("cache.rate_updates_max_items", "RATE_UPDATES_CACHE_MAX_ITEMS")
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshalling config: %w", err)

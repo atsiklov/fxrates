@@ -12,20 +12,20 @@ import (
 )
 
 func TestNewScheduler_Constructs(t *testing.T) {
-	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), 10*time.Second)
+	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), nil, 10*time.Second)
 	require.NotNil(t, s)
 	require.Nil(t, s.sched)
 }
 
 func TestScheduler_Shutdown_NoScheduler_ReturnsNil(t *testing.T) {
-	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), 10*time.Second)
+	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), nil, 10*time.Second)
 	err := s.Shutdown()
 	require.NoError(t, err)
 	require.Nil(t, s.sched)
 }
 
 func TestScheduler_Start_And_ContextCancel_ShutsDown(t *testing.T) {
-	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), 10*time.Second)
+	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), nil, 10*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Start scheduler
@@ -50,7 +50,7 @@ func TestScheduler_Start_And_ContextCancel_ShutsDown(t *testing.T) {
 func TestScheduler_Shutdown_AfterStart_Idempotent(t *testing.T) {
 	repo := new(MockRateUpdateRepository)
 	repo.On("GetPending", mock.Anything).Return([]domain.PendingRateUpdate{}, nil).Maybe()
-	s := NewScheduler(repo, new(MockRateClient), 10*time.Second)
+	s := NewScheduler(repo, new(MockRateClient), nil, 10*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -66,11 +66,11 @@ func TestScheduler_Shutdown_AfterStart_Idempotent(t *testing.T) {
 }
 
 func TestNewScheduler_UsesProvidedInterval(t *testing.T) {
-	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), 42*time.Second)
-	require.Equal(t, 42*time.Second, s.jobDuration)
+	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), nil, 42*time.Second)
+	require.Equal(t, 42*time.Second, s.updateRatesJobDuration)
 }
 
 func TestNewScheduler_DefaultsIntervalWhenInvalid(t *testing.T) {
-	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), 0)
-	require.Equal(t, 30*time.Second, s.jobDuration)
+	s := NewScheduler(new(MockRateUpdateRepository), new(MockRateClient), nil, 0)
+	require.Equal(t, 30*time.Second, s.updateRatesJobDuration)
 }
