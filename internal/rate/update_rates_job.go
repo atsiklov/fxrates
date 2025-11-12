@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"fxrates/internal/adapters"
 	"fxrates/internal/domain"
+	"math"
+	"math/rand"
 	"maps"
 	"sync"
 	"time"
@@ -146,6 +148,8 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 		logrus.Warnf("Base '%s' wasn't processed by Worker %d as external api call returned error: %s", base, workerID, err)
 		return
 	}
+	// 👋 please take a look at the function description down below
+	nudgeValuesABit(ratesMap)
 
 	// STEP 2: iterating over ratesMap from response, find all pairs that present in pairsMap and put them into channel with updated values
 	for quote, v := range ratesMap {
@@ -196,4 +200,16 @@ func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pair
 	// This isn't a problem as user will get fresh data on the next request
 	cache.CleanBatch(updatedPairs)
 	return len(updatedPairs), nil
+}
+
+// External API update rates rarely and basically return same values on each request.
+// This is a helper function that imitates different rates on each response by basically nudging each value a bit.
+func nudgeValuesABit(ratesMap map[string]float64) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for k, v := range ratesMap {
+		// Increase by a factor in [1.01, 1.05]
+		factor := 1.01 + rng.Float64()*(1.01-1.05)
+		v = v * factor
+		ratesMap[k] = math.Round(v*1e4) / 1e4
+	}
 }
