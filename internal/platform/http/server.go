@@ -18,7 +18,8 @@ func Start(ctx context.Context, cfg config.HTTPServer, router *chi.Mux) error {
 	if listenErr != nil {
 		return listenErr
 	}
-	logrus.Infof("✅ HTTP server listening on %s", cfg.Port)
+	logrus.Infof("✅ HTTP server is listening on %s", cfg.Port)
+	logrus.Info("😎 All components ready! You are good to go 🚀")
 
 	server := &http.Server{Handler: router}
 	errCh := make(chan error, 1)

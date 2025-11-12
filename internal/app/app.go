@@ -52,8 +52,7 @@ func Run() error {
 	// DB pool
 	pool, err := db.CreatePoolAndPing(startupCtx, appCfg.DbServer)
 	if err != nil {
-		logrus.WithError(err).Error("Error connecting to db")
-		return err
+		return fmt.Errorf("failed to establish DB connection: %w", err)
 	}
 	defer pool.Close()
 	logrus.Info("✅ Postgres connection successful")
@@ -62,10 +61,9 @@ func Run() error {
 	supportedCodes, err := loadSupportedCodes(startupCtx, pool)
 	if err != nil || len(supportedCodes) == 0 {
 		if err == nil {
-			err = errors.New("no supported currencies available")
+			err = errors.New("no currencies available")
 		}
-		logrus.WithError(err).Error("Failed to load supported currencies")
-		return err
+		return fmt.Errorf("error loading supported currencies: %w", err)
 	}
 
 	// Base HTTP client
@@ -92,7 +90,7 @@ func Run() error {
 	// Cache
 	rateUpdateCache, err := cache.NewRateUpdateCache(appCfg.Cache.RateUpdatesMaxItems)
 	if err != nil {
-		return fmt.Errorf("failed to init rate update cache: %w", err)
+		return fmt.Errorf("cache initialization failed: %w", err)
 	}
 	defer rateUpdateCache.Close()
 
@@ -103,13 +101,12 @@ func Run() error {
 	// Ensure scheduler stops before DB pool closes
 	defer func() {
 		if shutDownErr := scheduler.Shutdown(); shutDownErr != nil {
-			logrus.Errorf("Scheduler shutdown error: %v", shutDownErr)
+			logrus.Errorf("scheduler shutdown error: %v", shutDownErr)
 		}
 	}()
 	// Start scheduler tied to root context
 	if startErr := scheduler.Start(ctx); startErr != nil {
-		logrus.WithError(startErr).Error("Failed to start scheduler")
-		return startErr
+		return fmt.Errorf("scheduler initialization failed: %w", startErr)
 	}
 	logrus.Info("✅ Scheduler activation successful")
 
@@ -121,8 +118,7 @@ func Run() error {
 	if serverErr := httpserver.Start(ctx, appCfg.HTTPServer, router); serverErr != nil {
 		// Cancel the root context to stop scheduler and other in-flight work
 		stop()
-		logrus.Errorf("HTTP server error: %v", serverErr)
-		return serverErr
+		return fmt.Errorf("HTTP server error: %w", serverErr)
 	}
 	return nil
 }

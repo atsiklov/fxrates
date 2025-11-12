@@ -14,9 +14,9 @@ import (
 const numWorkers = 5
 const perRequestTimeout = 3 * time.Second
 
-// UpdatePendingRates updates rate in database using values from external API
+// UpdatePendingRates updates rates in database with values from external API
 func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapters.RateUpdateRepository, rateClient adapters.RateClient, cache adapters.RateUpdateCache) error {
-	// step 1: get rate from DB that require update
+	// STEP 1: getting pending rate updates from DB
 	pending, err := rateUpdateRepo.GetPending(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get pending rates: %w", err)
@@ -29,9 +29,8 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapt
 
 	logrus.Infof("%d pending rates were found, start updating; execID: %s", len(pending), execID)
 
-	// step 2: collecting rate into map like this:
+	// STEP 2: collecting found pending rates into map like this:
 	// {
-	//	key                           ->  value,
 	//	{ Base: "USD", Quote: "EUR" } -> -1.0,
 	//	{ Base: "USD", Quote: "MXN" } -> -1.0,
 	//	{ Base: "MXN", Quote: "EUR" } -> -1.0,
@@ -41,10 +40,10 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapt
 	// ! NOTE 2: map doesn't contain reversed pairs (for example if "USD/EUR" presents, then "EUR/USD" will not)
 	pairsMap := getUniquePairs(pending)
 
-	// step 3: process pairs in parallel using worker pool
+	// STEP 3: processing pairs in parallel using workers pool
 	processInParallel(ctx, rateClient, pairsMap)
 
-	// step 4:
+	// STEP 4: actually updating values in DB and clean cache
 	countUpdated, err := doUpdateRates(ctx, pending, pairsMap, rateUpdateRepo, cache)
 	if err != nil {
 		return err
@@ -66,25 +65,25 @@ func getUniquePairs(pending []domain.PendingRateUpdate) map[domain.RatePair]floa
 	return pairsMap
 }
 
-// processInParallel runs parallel workers, which fetch rate from external API and replace values in pairs map
+// processInParallel runs workers, which fetch rates from external API
 func processInParallel(ctx context.Context, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64) {
-	// Extracting unique "bases"
-	// Explanation: pairsMap can contain same "Base" values, for example "USD":
+	// STEP 1: extracting unique "bases", because pairsMap can contain same "Base" values, for example "USD":
 	// {
 	// 	{ Base: "USD", Quote: "EUR" } -> -1.0,
 	//	{ Base: "USD", Quote: "MXN" } -> -1.0
 	//  ...
 	// }
-	// These should not be separate requests. So let's extract only unique "bases" in order to optimize requests count
+	// For such cases we should not make several requests as values can be computed! So let's extract only unique "bases"
 	bases := getUniqueBases(pairsMap) // bases will look like: ["USD", "EUR", ...]
 
-	// Creating workQueue for parallel execution and then using it for parallel http requests
+	// STEP 2: creating workQueue for parallel execution and then using it for parallel http requests
 	workQueue := make(chan string, len(bases))
 	for _, base := range bases {
 		workQueue <- base // workQueue simply stores codes ("USD", "EUR", etc)
 	}
 	close(workQueue)
 
+	// STEP 3: running workers in parallel
 	var wg sync.WaitGroup
 	var mu sync.Mutex // Using mutex when updating "pairsMap" concurrently
 	for i := 0; i < numWorkers; i++ {
@@ -126,16 +125,17 @@ func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateC
 	}
 }
 
-// processBase fetches new values from external API and replaces values in pairs map
+// processBase fetches new values from external API and replaces values in pairsMap
 func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, mu *sync.Mutex) {
 	reqCtx, cancel := context.WithTimeout(ctx, perRequestTimeout)
 	defer cancel()
-	// Fetching rates for the specified "base" from external API. Using context with timeout as we better interrupt
-	// request and process "base" on the next scheduler job rather than wait
-	// ratesMap will look like this:
+	// STEP 1: make external API request
+	// We are using context with timeout as we better interrupt request and process "Base" on the next scheduler job rather than wait!
+	// After successful request, ratesMap will look like this:
 	// {
 	//		"MXN": 1.234,
-	//		"EUR": 1.431
+	//		"EUR": 1.431,
+	//      ...
 	// }
 	ratesMap, err := rateClient.GetExchangeRates(reqCtx, base)
 	if err != nil {
@@ -143,24 +143,26 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 		return
 	}
 
-	// Updating values (which are currently default -1.0) in pairs map
+	// STEP 2: concurrently updating values (which are currently default -1.0) in pairsMap
 	// ---
-	// Basically "base" is always fixed, so we iterate over ratesMap and on each iteration we
-	// create RatePair like {"USD", "<other code>"} and check if it presents in pairs map. If it does, replacing value
+	// Basically "base" is fixed, so we iterate over ratesMap and on each iteration we create RatePair
+	// and check if it presents in pairsMap. If it does, we lock map and replace value
 	for quote, v := range ratesMap {
 		p := domain.RatePair{Base: base, Quote: quote}
 		if _, ok := pairsMap[p]; ok {
-			mu.Lock() // lock the entire map, hope this fine for test project :)
+			// now we lock the entire map, but as a further improvement can switch to just locking a bucket
+			mu.Lock()
 			pairsMap[p] = v
 			mu.Unlock()
 		}
 	}
 }
 
-// doUpdateRates actually updates values in our domain rate using pairs map
-// - for each pending rate find corresponding RatePair and build applied rate with received value
-// - if desired RatePair absents, taking reversed RatePair and compute the value
+// doUpdateRates actually updates rates in DB and cleans cache
 func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pairsMap map[domain.RatePair]float64, rateUpdatesRepo adapters.RateUpdateRepository, cache adapters.RateUpdateCache) (int, error) {
+	// STEP 1: for all pending rates we:
+	// - build a list of AppliedRateUpdate, which will be updated in DB
+	// - build a list of RatePairs, which will be cleaned from cache
 	updatesToApply := make([]domain.AppliedRateUpdate, 0, len(pending))
 	updatedPairs := make([]domain.RatePair, 0, len(pending))
 
@@ -171,6 +173,7 @@ func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pair
 		if v, ok := pairsMap[pair]; ok && v > 0 {
 			value = v
 		} else if v, ok = pairsMap[pair.Reversed()]; ok && v > 0 {
+			// check if reversed pair in pairsMap and compute the value
 			value = 1 / v
 		} else {
 			// this can happen when some workers failed to fetch rates from external api
@@ -186,6 +189,7 @@ func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pair
 		return 0, nil
 	}
 
+	// STEP 2: applying updates in DB and clean cache
 	err := rateUpdatesRepo.ApplyUpdates(ctx, updatesToApply)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update rates: %w", err)

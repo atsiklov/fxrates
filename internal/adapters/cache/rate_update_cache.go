@@ -19,7 +19,7 @@ func NewRateUpdateCache(maxItems int64) (*RistrettoRateUpdateCache, error) {
 		BufferItems: 64,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create rate update cache failed: %w", err)
+		return nil, fmt.Errorf("cache creation failed: %w", err)
 	}
 	return &RistrettoRateUpdateCache{cache: c}, nil
 }

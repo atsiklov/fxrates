@@ -30,7 +30,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		execID := uuid.NewString()
 		updErr := UpdatePendingRates(jobCtx, execID, s.rateUpdateRepo, s.rateClient, s.cache)
 		if updErr != nil {
-			logrus.Errorf("ApplyUpdates pending rates job %s failed: %v", execID, updErr)
+			logrus.Errorf("Update pending rates job %s failed: %v", execID, updErr)
 		}
 	}
 

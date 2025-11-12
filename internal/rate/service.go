@@ -15,6 +15,7 @@ type Service struct {
 	cache           adapters.RateUpdateCache
 }
 
+// ScheduleUpdate checks if pair presents in cache first, otherwise goes to DB
 func (s *Service) ScheduleUpdate(ctx context.Context, base string, quote string) (uuid.UUID, error) {
 	pair := domain.RatePair{Base: base, Quote: quote}
 	if cachedID, ok := s.cache.Get(pair); ok {
@@ -30,6 +31,7 @@ func (s *Service) ScheduleUpdate(ctx context.Context, base string, quote string)
 	return updateID, nil
 }
 
+// GetByUpdateID defines View structure depending on update status and returns it
 func (s *Service) GetByUpdateID(ctx context.Context, updateID uuid.UUID) (View, error) {
 	rate, status, err := s.rateRepo.GetByUpdateID(ctx, updateID)
 	if err != nil {
