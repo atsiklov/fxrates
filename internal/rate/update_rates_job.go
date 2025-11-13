@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"fxrates/internal/adapters"
 	"fxrates/internal/domain"
+	"maps"
 	"sync"
 	"time"
 
@@ -34,23 +35,21 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapt
 
 	logrus.Infof("%d pending rates were found, start updating; execID: %s", len(pending), execID)
 
-	// STEP 2: collecting found pending rates into map like this:
+	// STEP 2: collecting found rates into a set like this:
 	// {
-	//	{ Base: "USD", Quote: "EUR" } -> -1.0,
-	//	{ Base: "USD", Quote: "MXN" } -> -1.0,
-	//	{ Base: "MXN", Quote: "EUR" } -> -1.0,
+	//	{ Base: "USD", Quote: "EUR" },
+	//	{ Base: "USD", Quote: "MXN" },
+	//	{ Base: "MXN", Quote: "EUR" },
 	//	...
 	// }
-	// ! NOTE 1: all the values are set as default -1.0
-	// ! NOTE 2: map doesn't contain reversed pairs (for example if "USD/EUR" presents, then "EUR/USD" will not)
-	// ! NOTE 3: this map is read by multiple threads down below, but updated ONLY BY THE SINGLE MAIN THREAD
-	pairsMap := getUniquePairs(pending)
+	// ! NOTE: set doesn't contain reversed pairs (for example if "USD/EUR" presents, then "EUR/USD" will not)
+	pairSet := getUniquePairs(pending)
 
-	// STEP 3: processing pairs in parallel using workers pool
-	processInParallel(ctx, rateClient, pairsMap)
+	// STEP 3: processing set in parallel using workers pool. The result is a map of pairs with values
+	pairValueMap := processInParallel(ctx, rateClient, pairSet)
 
-	// STEP 4: actually updating values in DB and clean cache
-	countUpdated, err := doUpdateRates(ctx, pending, pairsMap, rateUpdateRepo, cache)
+	// STEP 4: actually updating values in DB, then cleaning cache
+	countUpdated, err := doUpdateRates(ctx, pending, pairValueMap, rateUpdateRepo, cache)
 	if err != nil {
 		return err
 	}
@@ -59,71 +58,64 @@ func UpdatePendingRates(ctx context.Context, execID string, rateUpdateRepo adapt
 	return nil
 }
 
-func getUniquePairs(pending []domain.PendingRateUpdate) map[domain.RatePair]float64 {
-	pairsMap := make(map[domain.RatePair]float64, len(pending))
+func getUniquePairs(pending []domain.PendingRateUpdate) map[domain.RatePair]struct{} {
+	pairSet := make(map[domain.RatePair]struct{}, len(pending))
 	for _, rate := range pending {
 		pair := domain.RatePair{Base: rate.Base, Quote: rate.Quote}
-		if _, ok := pairsMap[pair.Reversed()]; ok {
+		if _, ok := pairSet[pair.Reversed()]; ok {
 			continue // skipping "EUR/USD" if "USD/EUR" presents
 		}
-		pairsMap[pair] = -1 // add pair with default value
+		pairSet[pair] = struct{}{}
 	}
-	return pairsMap
+	return pairSet
 }
 
 // processInParallel runs workers, which fetch rates from external API
-func processInParallel(ctx context.Context, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64) {
-	// STEP 1: extracting unique "bases", because pairsMap can contain same "Base" values, for example "USD":
-	// {
-	// 	{ Base: "USD", Quote: "EUR" } -> -1.0,
-	//	{ Base: "USD", Quote: "MXN" } -> -1.0
-	//  ...
-	// }
-	// For such cases we should not make several requests as values can be computed! So let's extract only unique "bases"
-	bases := getUniqueBases(pairsMap) // bases will look like: ["USD", "EUR", ...]
+func processInParallel(ctx context.Context, rateClient adapters.RateClient, pairs map[domain.RatePair]struct{}) map[domain.RatePair]float64 {
+	// STEP 1: extracting unique "bases"
+	// Pairs can contain same base values, for example "USD/EUR and "USD/MXN", we should not
+	// make several requests for the same currency! So let's extract only unique "bases"
+	bases := getUniqueBases(pairs) // bases is a set like: {"USD" -> {}, "EUR" -> {}, ...}
 
 	// STEP 2: creating workQueue for parallel execution and then using it for parallel http requests
 	workQueue := make(chan string, len(bases))
-	for _, base := range bases {
+	for base := range maps.Keys(bases) {
 		workQueue <- base // workQueue simply stores codes ("USD", "EUR", etc)
 	}
 	close(workQueue)
 
 	// STEP 3: running workers in parallel. Each worker puts its results into channel
-	updatesCh := make(chan rateUpdate, len(pairsMap))
+	updatesCh := make(chan rateUpdate, len(pairs))
 
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			runWorker(ctx, workerID, workQueue, rateClient, pairsMap, updatesCh)
+			runWorker(ctx, workerID, workQueue, rateClient, pairs, updatesCh)
 		}(i)
 	}
 
 	wg.Wait()
 	close(updatesCh)
 
-	// STEP 4: after all workers finished their jobs, update values in pairsMap
+	// STEP 4: after all workers finished their jobs, creating a map containing pairs with values
+	pairValueMap := make(map[domain.RatePair]float64, len(pairs))
 	for upd := range updatesCh {
-		pairsMap[upd.Pair] = upd.Value // key presence checked before passing to channel
+		pairValueMap[upd.Pair] = upd.Value
 	}
+	return pairValueMap
 }
 
-func getUniqueBases(pairsMap map[domain.RatePair]float64) []string {
+func getUniqueBases(pairs map[domain.RatePair]struct{}) map[string]struct{} {
 	baseSet := make(map[string]struct{})
-	for p := range pairsMap {
+	for p := range pairs {
 		baseSet[p.Base] = struct{}{}
 	}
-
-	bases := make([]string, 0, len(baseSet))
-	for base := range baseSet {
-		bases = append(bases, base)
-	}
-	return bases
+	return baseSet
 }
 
-func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, updatesCh chan<- rateUpdate) {
+func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateClient adapters.RateClient, pairs map[domain.RatePair]struct{}, updatesCh chan<- rateUpdate) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -132,13 +124,13 @@ func runWorker(ctx context.Context, workerID int, workQueue <-chan string, rateC
 			if !ok {
 				return
 			}
-			processBase(ctx, workerID, base, rateClient, pairsMap, updatesCh)
+			processBase(ctx, workerID, base, rateClient, pairs, updatesCh)
 		}
 	}
 }
 
 // processBase fetches new values from external API and pushes matching pairs to the updates channel
-func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairsMap map[domain.RatePair]float64, updatesCh chan<- rateUpdate) {
+func processBase(ctx context.Context, workerID int, base string, rateClient adapters.RateClient, pairs map[domain.RatePair]struct{}, updatesCh chan<- rateUpdate) {
 	reqCtx, cancel := context.WithTimeout(ctx, perRequestTimeout)
 	defer cancel()
 	// STEP 1: make external API request
@@ -156,19 +148,16 @@ func processBase(ctx context.Context, workerID int, base string, rateClient adap
 	}
 
 	// STEP 2: iterating over ratesMap from response, find all pairs that present in pairsMap and put them into channel with updated values
-	// NOTE 1 !!! to avoid confusion:
-	// - ratesMap is what we get from API response
-	// - pairsMap is our map where we store pairs and their values
 	for quote, v := range ratesMap {
 		p := domain.RatePair{Base: base, Quote: quote}
-		if _, ok := pairsMap[p]; ok {
+		if _, ok := pairs[p]; ok {
 			updatesCh <- rateUpdate{Pair: p, Value: v}
 		}
 	}
 }
 
 // doUpdateRates actually updates rates in DB and cleans cache
-func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pairsMap map[domain.RatePair]float64, rateUpdatesRepo adapters.RateUpdateRepository, cache adapters.RateUpdateCache) (int, error) {
+func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pairValueMap map[domain.RatePair]float64, rateUpdatesRepo adapters.RateUpdateRepository, cache adapters.RateUpdateCache) (int, error) {
 	// STEP 1: for all pending rates we:
 	// - build a list of AppliedRateUpdate, which will be updated in DB
 	// - build a list of RatePairs, which will be cleaned from cache
@@ -179,10 +168,10 @@ func doUpdateRates(ctx context.Context, pending []domain.PendingRateUpdate, pair
 		var value float64
 		pair := domain.RatePair{Base: pr.Base, Quote: pr.Quote}
 
-		if v, ok := pairsMap[pair]; ok && v > 0 {
+		if v, ok := pairValueMap[pair]; ok {
 			value = v
-		} else if v, ok = pairsMap[pair.Reversed()]; ok && v > 0 {
-			// check if reversed pair in pairsMap and compute the value
+		} else if v, ok = pairValueMap[pair.Reversed()]; ok {
+			// check if reversed pair presents and compute the value
 			value = 1 / v
 		} else {
 			// this can happen when some workers failed to fetch rates from external api

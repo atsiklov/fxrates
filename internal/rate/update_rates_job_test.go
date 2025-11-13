@@ -3,6 +3,8 @@ package rate
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"testing"
 
@@ -46,22 +48,23 @@ func TestGetUniquePairs_SkipsReversedAndSetsDefaults(t *testing.T) {
 	require.False(t, hasEURUSD)
 
 	// values are initialized to -1
-	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "EUR"}])
-	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "USD", Quote: "MXN"}])
-	require.Equal(t, float64(-1), pairs[domain.RatePair{Base: "MXN", Quote: "EUR"}])
+	require.Equal(t, struct{}{}, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}])
+	require.Equal(t, struct{}{}, pairs[domain.RatePair{Base: "USD", Quote: "MXN"}])
+	require.Equal(t, struct{}{}, pairs[domain.RatePair{Base: "MXN", Quote: "EUR"}])
 }
 
 // --- getUniqueBases ---
 
 func TestGetUniqueBases_CollectsUnique(t *testing.T) {
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
-		{Base: "USD", Quote: "PLN"}: -1,
-		{Base: "EUR", Quote: "GBP"}: -1,
+	pairs := map[domain.RatePair]struct{}{
+		{Base: "USD", Quote: "EUR"}: {},
+		{Base: "USD", Quote: "PLN"}: {},
+		{Base: "EUR", Quote: "GBP"}: {},
 	}
 
-	bases := getUniqueBases(pairs)
+	bases := slices.Collect(maps.Keys(getUniqueBases(pairs)))
 	sort.Strings(bases)
+	require.Len(t, bases, 2)
 	require.Equal(t, []string{"EUR", "USD"}, bases)
 }
 
@@ -69,8 +72,8 @@ func TestGetUniqueBases_CollectsUnique(t *testing.T) {
 
 func TestProcessBase_ErrorFromClient_DoesNotModify(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
+	pairs := map[domain.RatePair]struct{}{
+		{Base: "USD", Quote: "EUR"}: {},
 	}
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(nil, errors.New("timeout")).Once()
 
@@ -87,10 +90,10 @@ func TestProcessBase_ErrorFromClient_DoesNotModify(t *testing.T) {
 
 func TestProcessBase_UpdatesMatchingPairsOnly(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
-		{Base: "USD", Quote: "PLN"}: -1,
-		{Base: "EUR", Quote: "JPY"}: -1,
+	pairs := map[domain.RatePair]struct{}{
+		{Base: "USD", Quote: "EUR"}: {},
+		{Base: "USD", Quote: "PLN"}: {},
+		{Base: "EUR", Quote: "JPY"}: {},
 	}
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(map[string]float64{
 		"EUR": 1.2,
@@ -122,9 +125,9 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 	queue <- "EUR"
 	close(queue)
 
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
-		{Base: "EUR", Quote: "USD"}: -1,
+	pairs := map[domain.RatePair]struct{}{
+		{Base: "USD", Quote: "EUR"}: {},
+		{Base: "EUR", Quote: "USD"}: {},
 	}
 
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(map[string]float64{"EUR": 1.3}, nil).Once()
@@ -151,22 +154,22 @@ func TestRunWorker_ProcessesQueue(t *testing.T) {
 
 // --- processInParallel ---
 
-func TestProcessInParallel_UpdatesAllBases(t *testing.T) {
+func TestProcessInParallel_UpdatesAllBasesAndReturnsPairValueMap(t *testing.T) {
 	mockClient := new(MockRateClient)
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
-		{Base: "USD", Quote: "PLN"}: -1,
-		{Base: "EUR", Quote: "GBP"}: -1,
+	pairs := map[domain.RatePair]struct{}{
+		{Base: "USD", Quote: "EUR"}: {},
+		{Base: "USD", Quote: "PLN"}: {},
+		{Base: "EUR", Quote: "GBP"}: {},
 	}
 
 	mockClient.On("GetExchangeRates", mock.Anything, "USD").Return(map[string]float64{"EUR": 1.11, "PLN": 3.99}, nil).Once()
 	mockClient.On("GetExchangeRates", mock.Anything, "EUR").Return(map[string]float64{"GBP": 0.86}, nil).Once()
 
-	processInParallel(context.Background(), mockClient, pairs)
+	pairValueMap := processInParallel(context.Background(), mockClient, pairs)
 
-	require.InDelta(t, 1.11, pairs[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
-	require.InDelta(t, 3.99, pairs[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
-	require.InDelta(t, 0.86, pairs[domain.RatePair{Base: "EUR", Quote: "GBP"}], 1e-9)
+	require.InDelta(t, 1.11, pairValueMap[domain.RatePair{Base: "USD", Quote: "EUR"}], 1e-9)
+	require.InDelta(t, 3.99, pairValueMap[domain.RatePair{Base: "USD", Quote: "PLN"}], 1e-9)
+	require.InDelta(t, 0.86, pairValueMap[domain.RatePair{Base: "EUR", Quote: "GBP"}], 1e-9)
 	mockClient.AssertExpectations(t)
 }
 
@@ -181,10 +184,9 @@ func TestDoUpdateRates_AppliesDirectAndReversedAndSkipsMissing(t *testing.T) {
 		{UpdateID: uuid.New(), PairID: 3, Base: "GBP", Quote: "JPY"}, // missing -> skip
 		{UpdateID: uuid.New(), PairID: 4, Base: "AUD", Quote: "NZD"}, // non-positive -> skip
 	}
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: 0.9,  // direct
-		{Base: "PLN", Quote: "EUR"}: 4.0,  // reversed available => 1/4.0
-		{Base: "AUD", Quote: "NZD"}: -1.0, // non-positive
+	pairValueMap := map[domain.RatePair]float64{
+		{Base: "USD", Quote: "EUR"}: 0.9, // direct
+		{Base: "PLN", Quote: "EUR"}: 4.0, // reversed available => 1/4.0
 	}
 
 	mockUpdatesRepo.
@@ -207,7 +209,7 @@ func TestDoUpdateRates_AppliesDirectAndReversedAndSkipsMissing(t *testing.T) {
 		return assert.ElementsMatch(t, expectedPairs, pairs)
 	})).Return().Once()
 
-	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
+	count, err := doUpdateRates(context.Background(), pending, pairValueMap, mockUpdatesRepo, cacheMock)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
@@ -219,13 +221,13 @@ func TestDoUpdateRates_NoApplicableUpdates_DoesNotCallRepoAndDoesNotCleanCache(t
 	mockUpdatesRepo := new(MockRateUpdateRepository)
 	cacheMock := new(MockRateUpdateCache)
 	pending := []domain.PendingRateUpdate{
-		{UpdateID: uuid.New(), PairID: 10, Base: "USD", Quote: "EUR"},
+		{UpdateID: uuid.New(), PairID: 10, Base: "USD", Quote: "FOO"},
 	}
-	pairs := map[domain.RatePair]float64{
-		{Base: "USD", Quote: "EUR"}: -1,
+	pairValueMap := map[domain.RatePair]float64{
+		{Base: "USD", Quote: "EUR"}: 1.47,
 	}
 
-	count, err := doUpdateRates(context.Background(), pending, pairs, mockUpdatesRepo, cacheMock)
+	count, err := doUpdateRates(context.Background(), pending, pairValueMap, mockUpdatesRepo, cacheMock)
 
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
